@@ -1,7 +1,18 @@
 ---
 layout: default
 ---
-<h1 class="headline">{{site.title}}</h1>
-{% for post in site.posts %}
-<h3><a href="{{post.url | prepend: site.baseurl}}">{{post.title}}</a></h3>
-{% endfor %}
+<div class="content">
+  <div class="posts">
+    {% for post in site.posts %}
+      <a href="{{post.url | prepend: site.baseurl}}" class="post-excerpt">
+        <div class="c">
+          <h3 class="text">{{post.title}}</h3>
+          <info datetime="{{ post.date | date: "%Y-%m-%d" }}">{{ post.date | date: '%B %Y' }}</info>
+          <div class="body">
+            <p>{{post.excerpt}}</p>
+          </div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+</div>
