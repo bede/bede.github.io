@@ -4,15 +4,15 @@ layout: default
 <div class="content">
   <div class="posts">
     {% for post in site.posts %}
-      <a href="{{post.url | prepend: site.baseurl}}" class="post-excerpt">
         <div class="c">
+        <a href="{{post.url | prepend: site.baseurl}}" class="post-excerpt">
           <h3 class="text">{{post.title}}</h3>
-          <info datetime="{{ post.date | date: "%Y-%m-%d" }}">{{ post.date | date: '%B %Y' }}</info>
-          <div class="body">
-            <p>{{post.excerpt}}</p>
-          </div>
+        </a>
+        <info datetime="{{ post.date | date: "%Y-%m-%d" }}">{{ post.date | date: '%B %Y' }}</info>
+        <div class="body">
+          <p>{{post.excerpt}}</p>
         </div>
-      </a>
+      </div>
     {% endfor %}
   </div>
 </div>
