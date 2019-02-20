@@ -1,8 +1,8 @@
 ---
 layout: post
-title: Why is Europe incapable of producing businesses like Uber?
+title: “Why is Europe incapable of producing businesses like Uber?”
 ---
-Very much the poster child of the [gig economy](https://en.wikipedia.org/wiki/Access_economy), Uber operates to a unique set of standards and shrugs off much of the criticism fielded by its peers in this sector. Yet since their reluctant [publishing of GAAP figures](https://www.bloomberg.com/news/articles/2016-08-25/uber-loses-at-least-1-2-billion-in-first-half-of-2016), it has become apparent that not only are Uber's innovation claims dubious, but that neither their core business model nor [predictable](https://www.ubereats.com/) [pivots](https://rush.uber.com/) have yet to deliver the earliest signs of promise.
+Poster child of the gig economy, Uber operates to a unique set of standards and shrugs off much of the criticism fielded by its peers in this sector. Yet since its reluctant [publishing of GAAP figures](https://www.bloomberg.com/news/articles/2016-08-25/uber-loses-at-least-1-2-billion-in-first-half-of-2016), it has become clear that not only are Uber's innovation claims dubious, but that neither its core business model nor [predictable](https://www.ubereats.com/) [pivots](https://rush.uber.com/) have yet to deliver the earliest signs of promise.
 
 Hubert Horan's [excellent breakdown of these figures](http://www.nakedcapitalism.com/2016/11/can-uber-ever-deliver-part-one-understanding-ubers-bleak-operating-economics.html) is eye watering stuff:
 
@@ -27,9 +27,9 @@ As one HN commenter [put it](https://news.ycombinator.com/item?id=13437971):
 Uber users are not loyal and will defect at the drop of a hat. Until Uber can deliver a monopoly of driverless vehicles, their business model is anything but secure. 
 
 
-Uber is a fascinating experiment that may succeed, but it pains me to hear it cited as a glowing economic example of disruptive innovation. You may have heard interviews that go something like this:
+Uber is a fascinating experiment that may succeed, but it pains me to hear it cited as a glowing  example of disruptive innovation. I've heard several interviews that go something like this:
 
-> So Mr. <analyst/mayor/investor>, why is <Europe/London/Merthyr Tydfil> incapable of producing companies like Uber?
+> So Mr. <analyst//investor>, why is <Europe/London/Merthyr Tydfil> incapable of producing companies like Uber?
 
 
 Why? Because in its current form Uber resembles less a business and more a thinly veiled philanthropic scheme for distributing investor wealth among millenials with smartphones.
