@@ -17,4 +17,4 @@ analytics:
 # Comments
 disqus-shortname:
 
-gems: [jekyll-seo-tag, jekyll-paginate]
+plugins: [jekyll-seo-tag, jekyll-paginate]

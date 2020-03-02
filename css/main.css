@@ -341,6 +341,7 @@ img.profile-picture {
 div.post {
   padding-bottom: 0em;
   page-break-before: always;
+  max-width: 720px;
 }
   div.post.single, div.post:last-child { border-bottom:none; }
   
@@ -427,14 +428,15 @@ footer {
     border: none;
     width:1em;
     height:1em;
-    opacity:0.6;
+    opacity:1;
   }
-  footer a {
-    color: #333;
-    opacity: 0.3;
+  footer a, footer a:visited {
+    color: #ccc;
+    opacity: 1;
+    text-decoration:underline !important;
   }
   footer a:hover {
-    opacity:0.6;
+    opacity:1;
   }
   footer a.cc {
     background: none;
@@ -445,6 +447,10 @@ footer {
   }
   footer a.cc:hover img.cc {
     opacity:1;
+  }
+
+  .dataframe {
+    max-width:720px;
   }
 
 
@@ -473,6 +479,7 @@ a[href].post-excerpt {
   color: inherit;
   background: none;
   text-shadow: none;
+  padding-top:45px;
   padding-bottom:1px;
   margin-bottom:15px;
   /*border-bottom: 8px solid #ddd;*/
