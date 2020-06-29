@@ -371,4 +371,4 @@ show(p)
 {% endraw %}
 {% include 2020-03-02/3.html %}
 
-And we arrive where we began, excepting some ugly legend hacks which I'm too embarrassed to share. Let me know if you encounter issues, and please cite our paper if this helps your science! [https://doi.org/10.1101/2020.02.19.952366](https://www.biorxiv.org/content/10.1101/2020.02.19.952366v3)
+And we arrive where we began, excepting some ugly legend hacks which I'm too embarrassed to share. Let me know if you encounter issues, and please cite our paper if this helps your science! https://doi.org/10.1099/mgen.0.000391](https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.000391)
