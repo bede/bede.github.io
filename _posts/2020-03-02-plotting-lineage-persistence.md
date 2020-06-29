@@ -3,7 +3,7 @@ layout: post
 title: Plotting lineage persistence with Bokeh
 ---
 
-These plots can be useful for exploring trends in infectious disease outbreaks over time. In some recent work on [bugs growing in hospital sinks](https://www.biorxiv.org/content/10.1101/2020.02.19.952366v3), I used the one below to help show that sink drains are colonised by a handful of *E. coli* lineages, which occasionally overlap with infections seen in patients staying on the same wards. This is a small dataset, but the interactivity of [Bokeh](https://bokeh.org/) is proving useful for exploring a larger version of this dataset, where room for annotations is limited. The code below clusters a dataframe of SNP distances (produced here from a [recombination adjusted SNP phylogeny]({{site.baseurl}}/assets/2020-03-02/in/cluster_1_cf_scaled.guids.tree)), and uses a [dataframe of sampling dates]({{site.baseurl}}/assets/2020-03-02/in/meta.tsv) to produce a plot much like the one below.
+These plots can be useful for exploring trends in infectious disease outbreaks over time. In some recent work on [bugs growing in hospital sinks](https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.000391), I used the one below to help show that sink drains are colonised by a handful of *E. coli* lineages, which occasionally overlap with infections seen in patients staying on the same wards. This is a small dataset, but the interactivity of [Bokeh](https://bokeh.org/) is proving useful for exploring a larger version of this dataset, where room for annotations is limited. The code below clusters a dataframe of SNP distances (produced here from a [recombination adjusted SNP phylogeny]({{site.baseurl}}/assets/2020-03-02/in/cluster_1_cf_scaled.guids.tree)), and uses a [dataframe of sampling dates]({{site.baseurl}}/assets/2020-03-02/in/meta.tsv) to produce a plot much like the one below.
 
 {% include 2020-03-02/ec_100_nr.html %}
 
@@ -371,4 +371,4 @@ show(p)
 {% endraw %}
 {% include 2020-03-02/3.html %}
 
-And we arrive where we began, excepting some ugly legend hacks which I'm too embarrassed to share. Let me know if you encounter issues, and please cite our paper if this helps your science! https://doi.org/10.1099/mgen.0.000391](https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.000391)
+And we arrive where we began, excepting some ugly legend hacks which I'm too embarrassed to share. Let me know if you encounter issues, and please cite our paper if this helps your science! [https://doi.org/10.1099/mgen.0.000391](https://www.microbiologyresearch.org/content/journal/mgen/10.1099/mgen.0.000391)
