@@ -6,16 +6,16 @@ layout: compress
   <head>
     <title>{% if page.title %}{{ page.title }} - {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
     <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://fonts.googleapis.com/css?family=Lato:900|Work+Sans" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Inconsolata:400,700&amp;subset=latin-ext" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Roboto+Condensed" rel="stylesheet">
-    <link rel="stylesheet" href="{{site.baseurl}}/css/main.css">
-    <link rel="stylesheet" href="{{site.baseurl}}/css/github.css">
-    <link rel="shortcut icon" href="/favicon.ico">
-    <link rel="icon" type="image/svg+xml" sizes="any" href="{{site.baseurl}}/images/icon.svg">
-    <link rel="apple-touch-icon" href="{{site.baseurl}}/images/icon-256.png">
+    <link rel="stylesheet" href="/css/main.css">
+    <link rel="stylesheet" href="/css/github.css">
+    <link rel="icon" href="/images/favicon.ico"><!-- 32×32 -->
+    <link rel="icon" href="/images/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/images/180.png"><!-- 180×180 -->
+    <link rel="manifest" href="/images/manifest.webmanifest">
   </head>
   <body>
     <script src="{{site.baseurl}}/js/theme.min.js"></script>
@@ -29,7 +29,7 @@ layout: compress
     {{ content }}
     <div class="breaker"></div>
     <footer>
-      <p>HyperBlogLog<a href="https://en.wikipedia.org/wiki/HyperLogLog">?</a> | t: <a href="https://twitter.com/beconstant">@beconstant</a> | Content licensed under <a rel="license" href="https://creativecommons.org/licenses/by/3.0/deed">CC BY 3.0</a></p>
+      <p>HyperBlogLog<a href="https://en.wikipedia.org/wiki/HyperLogLog">?</a> | t: <a href="https://twitter.com/beconstant">@beconstant</a></p>
     </footer>
     {% include analytics.html %}
   </body>
