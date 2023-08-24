@@ -40,7 +40,7 @@ hr { height:1px; border:none; background-color:#ddd; }
 
 /* headings */
 h1,h2,h3,h4,h5,h6 {
-  font-family: 'Roboto Condensed', helvetica, sans-serif;
+  font-family: 'Roboto Flex', sans-serif;
   font-weight:400;
   color: #040404;
   margin: 1.618em 0 0.7em 0;
@@ -506,7 +506,7 @@ a[href].post-excerpt, a[href].post-excerpt a[href] {
     margin-bottom:32px;
   }
     a[href].post-excerpt.photo h3 {
-      font-family: 'Roboto Condensed', helvetica, sans-serif;
+      font-family: 'Roboto Flex', sans-serif;
       padding:10px 40px;
       font-size: 200%;
       font-weight: 400;
@@ -563,7 +563,7 @@ a[href].post-excerpt:hover .body {
 
 info {
   display: inline;
-  color: #ddd;
+  color: #bbb;
   white-space: nowrap;
 }
 
