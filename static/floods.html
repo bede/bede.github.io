@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚦 Muchelney Flood Status</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        /* General Styles */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+            background-color: white; /* Match plot background */
+            color: #333;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin: 0px 0px 0px 15px;
+            color: #1d70b8;
+        }
+
+        p, ul, li {
+            margin: 0;
+            padding: 0;
+        }
+
+        p {
+            font-size: 1rem;
+            margin: 10px 15px;
+        }
+
+        ul {
+            margin: 0 15px 10px 15px;
+            padding: 0;
+            list-style: none;
+        }
+
+        ul li {
+            font-size: 1rem;
+            margin-bottom: 5px;
+        }
+
+        a {
+            color: #1d70b8;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        #map {
+            width: 100%;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        #chart {
+            width: 100%; /* Full width */
+            margin: 0; /* Remove margins */
+            padding: 0; /* Remove padding */
+        }
+
+        footer {
+            font-size: 0.9rem;
+            margin: 20px 15px;
+            text-align: center;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <h1>Muchelney Road Flooding Predictor</h1>
+    <p>Latest reading: <span id="last-reading"></span></p>
+    <ul>
+        <li><span id="emoji-langport-muchelney"></span> <span id="status-langport-muchelney"></span></li>
+        <li><span id="emoji-muchelney-thorney"></span> <span id="status-muchelney-thorney"></span></li>
+    </ul>
+
+    <div id="chart"></div>
+    <div id="map"></div>
+
+    <footer>
+        Feedback to <a href="mailto:b@bede.im">b@bede.im</a> 
+        (<a href="https://bsky.app/profile/bedec.bsky.social">@bedec</a>). 
+        <a href="https://check-for-flooding.service.gov.uk/station/3381">Data source</a>
+    </footer>
+
+    <script>
+        // Thresholds
+        const THRESHOLDS = {
+            MUCHELNEY_THORNEY: { amber: 2.7, red: 3.1 },
+            LANGPORT_MUCHELNEY: { amber: 1.8, red: 2.1 }
+        };
+
+        // Colors, Emojis, and Status Messages
+        const STATUSES = {
+            green: { emoji: "🟢", message: "no flood predicted" },
+            amber: { emoji: "🟠", message: "flood predicted" },
+            red: { emoji: "🔴", message: "deep flood predicted" }
+        };
+
+        // Fetch data, create chart, and map
+        async function fetchAndPlotData() {
+            try {
+                const parsedData = await fetchData();
+                const latestReading = parsedData[parsedData.length - 1];
+                updateLastReadingInfo(latestReading);
+                renderChart(parsedData);
+                renderMap(latestReading);
+            } catch (error) {
+                console.error("Error:", error);
+                alert("Failed to fetch and plot data.");
+            }
+        }
+
+        // Fetch data from cache or API
+        async function fetchData() {
+            const cachedCSV = localStorage.getItem("waterLevelsCSV");
+            const cachedTimestamp = localStorage.getItem("waterLevelsTimestamp");
+            const now = new Date().getTime();
+
+            if (cachedCSV && cachedTimestamp && now - cachedTimestamp < 15 * 60 * 1000) {
+                console.log("Using cached data");
+                return parseCSV(cachedCSV);
+            }
+
+            console.log("Fetching new data");
+            const response = await fetch("https://check-for-flooding.service.gov.uk/station-csv/3381");
+            if (!response.ok) throw new Error("Failed to fetch data");
+            const csvData = await response.text();
+
+            localStorage.setItem("waterLevelsCSV", csvData);
+            localStorage.setItem("waterLevelsTimestamp", now.toString());
+
+            return parseCSV(csvData);
+        }
+
+        // Parse CSV data
+        function parseCSV(csvData) {
+            return csvData
+                .trim()
+                .split("\n")
+                .slice(1)
+                .map((row) => {
+                    const [timestamp, height] = row.split(",");
+                    return { timestamp, height: parseFloat(height) };
+                });
+        }
+
+        // Update last reading info and flood status
+        function updateLastReadingInfo(latestReading) {
+            const minutesAgo = Math.floor(
+                (new Date() - new Date(latestReading.timestamp)) / (1000 * 60)
+            );
+            document.getElementById(
+                "last-reading"
+            ).textContent = `${latestReading.height}m (${minutesAgo} minutes ago)`;
+
+            // Determine flood statuses
+            const langportStatus = determineStatus(
+                latestReading.height,
+                THRESHOLDS.LANGPORT_MUCHELNEY
+            );
+            const muchelneyStatus = determineStatus(
+                latestReading.height,
+                THRESHOLDS.MUCHELNEY_THORNEY
+            );
+
+            // Update emojis and status messages
+            document.getElementById("emoji-langport-muchelney").textContent =
+                langportStatus.emoji;
+            document.getElementById("status-langport-muchelney").textContent =
+                `Langport ↔ Muchelney: ${langportStatus.message}`;
+            document.getElementById("emoji-muchelney-thorney").textContent =
+                muchelneyStatus.emoji;
+            document.getElementById("status-muchelney-thorney").textContent =
+                `Muchelney ↔ Thorney: ${muchelneyStatus.message}`;
+        }
+
+        // Determine flood status
+        function determineStatus(height, thresholds) {
+            if (height >= thresholds.red) return STATUSES.red;
+            if (height >= thresholds.amber) return STATUSES.amber;
+            return STATUSES.green;
+        }
+
+        // Render the chart
+        function renderChart(parsedData) {
+            const spec = {
+                $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+                description: "Water levels over time",
+                data: { values: parsedData },
+                layer: [
+                    createLineLayer(),
+                    createThresholdLineLayer(
+                        THRESHOLDS.MUCHELNEY_THORNEY.amber,
+                        "Muchelney-Thorney Amber",
+                        "black"
+                    ),
+                    createThresholdTextLayer(
+                        THRESHOLDS.MUCHELNEY_THORNEY.amber,
+                        "Muchelney-Thorney: 2.7m"
+                    ),
+                    createThresholdLineLayer(
+                        THRESHOLDS.LANGPORT_MUCHELNEY.amber,
+                        "Langport-Muchelney Amber",
+                        "black"
+                    ),
+                    createThresholdTextLayer(
+                        THRESHOLDS.LANGPORT_MUCHELNEY.amber,
+                        "Langport-Muchelney: 1.8m"
+                    )
+                ],
+                width: window.innerWidth - 80,
+                height: 200
+            };
+            vegaEmbed("#chart", spec);
+        }
+
+        // Create main line layer
+        function createLineLayer() {
+            return {
+                mark: { type: "line", color: "#1d70b8", strokeWidth: 3 },
+                encoding: {
+                    x: {
+                        field: "timestamp",
+                        type: "temporal",
+                        axis: {
+                            tickCount: "day",
+                            format: "%Y-%m-%d"
+                        }
+                    },
+                    y: {
+                        field: "height",
+                        type: "quantitative",
+                        title: "Water level (m)"
+                    }
+                }
+            };
+        }
+
+        // Create threshold line layer
+        function createThresholdLineLayer(value, label, color) {
+            return {
+                mark: { type: "rule", strokeDash: [4, 4], color },
+                encoding: {
+                    y: { datum: value },
+                    tooltip: { value: `${label} Threshold (${value}m)` }
+                }
+            };
+        }
+
+        // Create threshold text layer
+        function createThresholdTextLayer(value, label) {
+            return {
+                mark: {
+                    type: "text",
+                    align: "right",
+                    dx: +8,
+                    dy: -6,
+                    font: "Helvetica Neue, Arial, sans-serif",
+                    fontSize: 10,
+                    fontWeight: "normal",
+                    color: "black"
+                },
+                encoding: {
+                    y: { datum: value },
+                    text: { value: label },
+                    x: { value: window.innerWidth - 110 }
+                }
+            };
+        }
+
+        // Render the map
+        function renderMap(latestReading) {
+            const map = L.map("map").setView([51.021, -2.82], 12);
+
+            // Add OpenStreetMap tiles
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                attribution:
+                    "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
+            }).addTo(map);
+
+            // Add markers
+            addMarker(
+                map,
+                [51.0266797, -2.8174208],
+                `Langport ↔ Muchelney`,
+                determineStatus(latestReading.height, THRESHOLDS.LANGPORT_MUCHELNEY).color
+            );
+            addMarker(
+                map,
+                [51.0132813, -2.8149388],
+                `Muchelney ↔ Thorney`,
+                determineStatus(latestReading.height, THRESHOLDS.MUCHELNEY_THORNEY).color
+            );
+        }
+
+        // Add a marker to the map
+        function addMarker(map, position, label, color) {
+            L.marker(position, {
+                icon: L.divIcon({
+                    className: "custom-icon",
+                    html: `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%;"></div>`
+                })
+            })
+                .addTo(map)
+                .bindPopup(label);
+        }
+
+        // Fetch and plot data on page load
+        window.onload = fetchAndPlotData;
+    </script>
+</body>
+</html>
