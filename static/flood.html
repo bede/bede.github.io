@@ -80,8 +80,8 @@
     </style>
 </head>
 <body>
-    <h1>Muchelney Road Flooding Predictor</h1>
-    <p>Latest reading: <span id="last-reading"></span></p>
+    <h1>Muchelney Flood Predictor</h1>
+    <p>Water level: <span id="last-reading"></span></p>
     <ul>
         <li><span id="emoji-langport-muchelney"></span> <span id="status-langport-muchelney"></span></li>
         <li><span id="emoji-muchelney-thorney"></span> <span id="status-muchelney-thorney"></span></li>
@@ -91,7 +91,7 @@
     <div id="map"></div>
 
     <footer>
-        Feedback to <a href="mailto:b@bede.im">b@bede.im</a> 
+        Version 1. Feedback encouraged! <a href="mailto:b@bede.im">b@bede.im</a> 
         (<a href="https://bsky.app/profile/bedec.bsky.social">@bedec</a>). 
         <a href="https://check-for-flooding.service.gov.uk/station/3381">Data source</a>
     </footer>
@@ -104,10 +104,16 @@
         };
 
         // Colors, Emojis, and Status Messages
+        const COLORS = {
+            green: "green",
+            amber: "orange",
+            red: "red"
+        };
+
         const STATUSES = {
-            green: { emoji: "🟢", message: "no flood predicted" },
-            amber: { emoji: "🟠", message: "flood predicted" },
-            red: { emoji: "🔴", message: "deep flood predicted" }
+            green: { emoji: "🟢", message: "clear" },
+            amber: { emoji: "🟠", message: "flood" },
+            red: { emoji: "🔴", message: "deep flood" }
         };
 
         // Fetch data, create chart, and map
@@ -181,11 +187,11 @@
             document.getElementById("emoji-langport-muchelney").textContent =
                 langportStatus.emoji;
             document.getElementById("status-langport-muchelney").textContent =
-                `Langport ↔ Muchelney: ${langportStatus.message}`;
+                `Langport-Muchelney road: ${langportStatus.message}`;
             document.getElementById("emoji-muchelney-thorney").textContent =
                 muchelneyStatus.emoji;
             document.getElementById("status-muchelney-thorney").textContent =
-                `Muchelney ↔ Thorney: ${muchelneyStatus.message}`;
+                `Muchelney-Thorney road: ${muchelneyStatus.message}`;
         }
 
         // Determine flood status
@@ -297,13 +303,19 @@
                 map,
                 [51.0266797, -2.8174208],
                 `Langport ↔ Muchelney`,
-                determineStatus(latestReading.height, THRESHOLDS.LANGPORT_MUCHELNEY).color
+                determineMarkerColor(
+                    latestReading.height,
+                    THRESHOLDS.LANGPORT_MUCHELNEY
+                )
             );
             addMarker(
                 map,
                 [51.0132813, -2.8149388],
                 `Muchelney ↔ Thorney`,
-                determineStatus(latestReading.height, THRESHOLDS.MUCHELNEY_THORNEY).color
+                determineMarkerColor(
+                    latestReading.height,
+                    THRESHOLDS.MUCHELNEY_THORNEY
+                )
             );
         }
 
@@ -317,6 +329,13 @@
             })
                 .addTo(map)
                 .bindPopup(label);
+        }
+
+        // Determine marker color
+        function determineMarkerColor(height, thresholds) {
+            if (height >= thresholds.red) return COLORS.red;
+            if (height >= thresholds.amber) return COLORS.amber;
+            return COLORS.green;
         }
 
         // Fetch and plot data on page load
