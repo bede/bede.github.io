@@ -186,12 +186,13 @@
             // Update emojis and status messages
             document.getElementById("emoji-langport-muchelney").textContent =
                 langportStatus.emoji;
-            document.getElementById("status-langport-muchelney").textContent =
-                `Langport-Muchelney road: ${langportStatus.message}`;
             document.getElementById("emoji-muchelney-thorney").textContent =
                 muchelneyStatus.emoji;
-            document.getElementById("status-muchelney-thorney").textContent =
-                `Muchelney-Thorney road: ${muchelneyStatus.message}`;
+            document.getElementById("status-langport-muchelney").innerHTML =
+                `Langport–Muchelney: <strong>${langportStatus.message}</strong>`;
+            document.getElementById("status-muchelney-thorney").innerHTML =
+                `Muchelney–Thorney: <strong>${muchelneyStatus.message}</strong>`;
+
         }
 
         // Determine flood status
