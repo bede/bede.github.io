@@ -29,6 +29,13 @@
             color: #1d70b8;
         }
 
+        h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 6px 0px 2px 15px;
+            color: #1d70b8;
+        }
+
         p, ul, li {
             margin: 0;
             padding: 0;
@@ -36,7 +43,7 @@
 
         p {
             font-size: 1rem;
-            margin: 10px 15px;
+            margin: 2px 15px;
         }
 
         ul {
@@ -62,7 +69,7 @@
         #map {
             width: 100%;
             height: 250px;
-            margin-top: 20px;
+            margin-top: 0px;
         }
 
         #chart {
@@ -80,19 +87,20 @@
     </style>
 </head>
 <body>
-    <h1>Muchelney Flood Predictor</h1>
+    <h1>Muchelney Flood Status</h1>
     <p>Water level: <span id="last-reading"></span></p>
-    <ul>
-        <li><span id="emoji-langport-muchelney"></span> <span id="status-langport-muchelney"></span></li>
-        <li><span id="emoji-muchelney-thorney"></span> <span id="status-muchelney-thorney"></span></li>
-    </ul>
-
+    <section>
+        <h2>Predictions: <span id="last-reading"></span></h2>
+        <ul>
+            <li><span id="emoji-langport-muchelney"></span> <span id="status-langport-muchelney"></span></li>
+            <li><span id="emoji-muchelney-thorney"></span> <span id="status-muchelney-thorney"></span></li>
+        </ul>
+    </section>
     <div id="chart"></div>
     <div id="map"></div>
 
     <footer>
-        Version 1. Feedback encouraged! <a href="mailto:b@bede.im">b@bede.im</a> 
-        (<a href="https://bsky.app/profile/bedec.bsky.social">@bedec</a>). 
+        Feedback encouraged: <a href="mailto:b@bede.im">b@bede.im</a>. 
         <a href="https://check-for-flooding.service.gov.uk/station/3381">Data source</a>
     </footer>
 
@@ -189,9 +197,9 @@
             document.getElementById("emoji-muchelney-thorney").textContent =
                 muchelneyStatus.emoji;
             document.getElementById("status-langport-muchelney").innerHTML =
-                `Langport–Muchelney: <strong>${langportStatus.message}</strong>`;
+                `Langport–Muchelney road: <strong>${langportStatus.message}</strong>`;
             document.getElementById("status-muchelney-thorney").innerHTML =
-                `Muchelney–Thorney: <strong>${muchelneyStatus.message}</strong>`;
+                `Muchelney–Thorney road: <strong>${muchelneyStatus.message}</strong>`;
 
         }
 
@@ -252,7 +260,8 @@
                     y: {
                         field: "height",
                         type: "quantitative",
-                        title: "Water level (m)"
+                        title: "Water level (m)",
+                        scale: { domainMin: 1 }
                     }
                 }
             };
