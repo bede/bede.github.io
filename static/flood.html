@@ -87,12 +87,13 @@
     </style>
 </head>
 <body>
-    <h1>Muchelney Flood Status</h1>
+    <h1>Muchelney flood dashboard</h1>
     <p>Water level: <span id="last-reading"></span></p>
     <section>
-        <h2>Predictions: <span id="last-reading"></span></h2>
+        <h2>Road status:</h2>
         <ul>
             <li><span id="emoji-langport-muchelney"></span> <span id="status-langport-muchelney"></span></li>
+            <li><span id="emoji-muchelney-longload"></span> <span id="status-muchelney-longload"></span></li>
             <li><span id="emoji-muchelney-thorney"></span> <span id="status-muchelney-thorney"></span></li>
         </ul>
     </section>
@@ -101,14 +102,15 @@
 
     <footer>
         Feedback encouraged: <a href="mailto:b@bede.im">b@bede.im</a>. 
-        <a href="https://check-for-flooding.service.gov.uk/station/3381">Data source</a>
+        <a href="https://check-for-flooding.service.gov.uk/station/3379">Data</a> <a href="https://check-for-flooding.service.gov.uk/target-area/112WAFYPM">source</a>
     </footer>
 
     <script>
         // Thresholds
         const THRESHOLDS = {
-            MUCHELNEY_THORNEY: { amber: 2.7, red: 3.1 },
-            LANGPORT_MUCHELNEY: { amber: 1.8, red: 2.1 }
+            LANGPORT_MUCHELNEY: { amber: 7.3, red: 7.6 },
+            MUCHELNEY_THORNEY: { amber: 7.93, red: 8.23 },
+            MUCHELNEY_LONGLOAD: { amber: 7.86, red: 8.16 }
         };
 
         // Colors, Emojis, and Status Messages
@@ -150,7 +152,7 @@
             }
 
             console.log("Fetching new data");
-            const response = await fetch("https://check-for-flooding.service.gov.uk/station-csv/3381");
+            const response = await fetch("https://check-for-flooding.service.gov.uk/station-csv/3379");
             if (!response.ok) throw new Error("Failed to fetch data");
             const csvData = await response.text();
 
@@ -168,7 +170,7 @@
                 .slice(1)
                 .map((row) => {
                     const [timestamp, height] = row.split(",");
-                    return { timestamp, height: parseFloat(height) };
+                    return { timestamp, height: parseFloat(height) + 5 }; // Add 5m offset
                 });
         }
 
@@ -186,27 +188,41 @@
                 latestReading.height,
                 THRESHOLDS.LANGPORT_MUCHELNEY
             );
-            const muchelneyStatus = determineStatus(
+            const muchelneyThorneyStatus = determineStatus(
                 latestReading.height,
                 THRESHOLDS.MUCHELNEY_THORNEY
+            );
+            const muchelneyLongLoadStatus = determineStatus(
+                latestReading.height,
+                THRESHOLDS.MUCHELNEY_LONGLOAD
             );
 
             // Update emojis and status messages
             document.getElementById("emoji-langport-muchelney").textContent =
                 langportStatus.emoji;
             document.getElementById("emoji-muchelney-thorney").textContent =
-                muchelneyStatus.emoji;
-            document.getElementById("status-langport-muchelney").innerHTML =
-                `Langport–Muchelney road: <strong>${langportStatus.message}</strong>`;
-            document.getElementById("status-muchelney-thorney").innerHTML =
-                `Muchelney–Thorney road: <strong>${muchelneyStatus.message}</strong>`;
+                muchelneyThorneyStatus.emoji;
+            document.getElementById("emoji-muchelney-longload").textContent =
+                muchelneyLongLoadStatus.emoji;
 
+            document.getElementById("status-langport-muchelney").innerHTML =
+                `Langport to Muchelney: <strong>${langportStatus.message}</strong>`;
+            document.getElementById("status-muchelney-thorney").innerHTML =
+                `Muchelney to Thorney: <strong>${muchelneyThorneyStatus.message}</strong>`;
+            document.getElementById("status-muchelney-longload").innerHTML =
+                `Muchelney to Long Load: <strong>${muchelneyLongLoadStatus.message}</strong>`;
         }
 
         // Determine flood status
         function determineStatus(height, thresholds) {
-            if (height >= thresholds.red) return STATUSES.red;
-            if (height >= thresholds.amber) return STATUSES.amber;
+            if (height >= thresholds.red) {
+                const diff = Math.round((height - thresholds.red) * 100); // Difference in cm
+                return { ...STATUSES.red, message: `${STATUSES.red.message} (+${diff}cm)` };
+            }
+            if (height >= thresholds.amber) {
+                const diff = Math.round((height - thresholds.amber) * 100); // Difference in cm
+                return { ...STATUSES.amber, message: `${STATUSES.amber.message} (+${diff}cm)` };
+            }
             return STATUSES.green;
         }
 
@@ -218,23 +234,20 @@
                 data: { values: parsedData },
                 layer: [
                     createLineLayer(),
-                    createThresholdLineLayer(
-                        THRESHOLDS.MUCHELNEY_THORNEY.amber,
-                        "Muchelney-Thorney Amber",
-                        "black"
-                    ),
+                    createThresholdLineLayer(THRESHOLDS.MUCHELNEY_THORNEY.amber, "black"),
                     createThresholdTextLayer(
                         THRESHOLDS.MUCHELNEY_THORNEY.amber,
-                        "Muchelney-Thorney: 2.7m"
+                        `Muchelney to Thorney`
                     ),
-                    createThresholdLineLayer(
-                        THRESHOLDS.LANGPORT_MUCHELNEY.amber,
-                        "Langport-Muchelney Amber",
-                        "black"
-                    ),
+                    createThresholdLineLayer(THRESHOLDS.LANGPORT_MUCHELNEY.amber, "black"),
                     createThresholdTextLayer(
                         THRESHOLDS.LANGPORT_MUCHELNEY.amber,
-                        "Langport-Muchelney: 1.8m"
+                        `Langport to Muchelney`
+                    ),
+                    createThresholdLineLayer(THRESHOLDS.MUCHELNEY_LONGLOAD.amber, "black"),
+                    createThresholdTextLayer(
+                        THRESHOLDS.MUCHELNEY_LONGLOAD.amber,
+                        `Muchelney to Long Load`
                     )
                 ],
                 width: window.innerWidth - 80,
@@ -268,12 +281,12 @@
         }
 
         // Create threshold line layer
-        function createThresholdLineLayer(value, label, color) {
+        function createThresholdLineLayer(threshold, color) {
             return {
                 mark: { type: "rule", strokeDash: [4, 4], color },
                 encoding: {
-                    y: { datum: value },
-                    tooltip: { value: `${label} Threshold (${value}m)` }
+                    y: { datum: threshold },
+                    tooltip: { value: `Threshold: ${threshold}m` }
                 }
             };
         }
@@ -293,7 +306,7 @@
                 },
                 encoding: {
                     y: { datum: value },
-                    text: { value: label },
+                    text: { value: `${label} (${value}m)` },
                     x: { value: window.innerWidth - 110 }
                 }
             };
@@ -313,25 +326,29 @@
             addMarker(
                 map,
                 [51.0266797, -2.8174208],
-                `Langport ↔ Muchelney`,
-                determineMarkerColor(
-                    latestReading.height,
-                    THRESHOLDS.LANGPORT_MUCHELNEY
-                )
+                `Langport to Muchelney`,
+                THRESHOLDS.LANGPORT_MUCHELNEY,
+                determineMarkerColor(latestReading.height, THRESHOLDS.LANGPORT_MUCHELNEY)
             );
             addMarker(
                 map,
                 [51.0132813, -2.8149388],
-                `Muchelney ↔ Thorney`,
-                determineMarkerColor(
-                    latestReading.height,
-                    THRESHOLDS.MUCHELNEY_THORNEY
-                )
+                `Muchelney to Thorney`,
+                THRESHOLDS.MUCHELNEY_THORNEY,
+                determineMarkerColor(latestReading.height, THRESHOLDS.MUCHELNEY_THORNEY)
+            );
+            addMarker(
+                map,
+                [51.009468, -2.793615],
+                `Muchelney to Long Load`,
+                THRESHOLDS.MUCHELNEY_LONGLOAD,
+                determineMarkerColor(latestReading.height, THRESHOLDS.MUCHELNEY_LONGLOAD)
             );
         }
 
         // Add a marker to the map
-        function addMarker(map, position, label, color) {
+        function addMarker(map, position, label, thresholds, color) {
+            const thresholdText = `Flood threshold: ${thresholds.amber}m`;
             L.marker(position, {
                 icon: L.divIcon({
                     className: "custom-icon",
@@ -339,7 +356,7 @@
                 })
             })
                 .addTo(map)
-                .bindPopup(label);
+                .bindPopup(`${label}<br>${thresholdText}`);
         }
 
         // Determine marker color
