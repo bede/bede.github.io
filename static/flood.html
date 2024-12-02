@@ -6,10 +6,8 @@
     <title>🚦 Muchelney Flood Status</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         /* General Styles */
@@ -68,12 +66,13 @@
 
         #map {
             width: 100%;
-            height: 250px;
+            height: 240px;
             margin-top: 0px;
         }
 
         #chart {
             width: 100%; /* Full width */
+            height: 280px;
             margin: 0; /* Remove margins */
             padding: 0; /* Remove padding */
         }
@@ -87,8 +86,8 @@
     </style>
 </head>
 <body>
-    <h1>Muchelney flood dashboard</h1>
-    <p>Water level: <span id="last-reading"></span></p>
+    <h1>Muchelney flood status</h1>
+    <p>Current level: <span id="last-reading"></span></p>
     <section>
         <h2>Road status:</h2>
         <ul>
@@ -101,14 +100,14 @@
     <div id="map"></div>
 
     <footer>
-        Feedback encouraged: <a href="mailto:b@bede.im">b@bede.im</a>. 
-        <a href="https://check-for-flooding.service.gov.uk/station/3379">Data</a> <a href="https://check-for-flooding.service.gov.uk/target-area/112WAFYPM">source</a>
+        Feedback encouraged: <a href="mailto:b@bede.im">b@bede.im</a>. Sources: 
+        <a href="https://check-for-flooding.service.gov.uk/station/3379">data</a>, <a href="https://check-for-flooding.service.gov.uk/target-area/112WAFYPM">thresholds</a>
     </footer>
 
     <script>
         // Thresholds
         const THRESHOLDS = {
-            LANGPORT_MUCHELNEY: { amber: 7.3, red: 7.6 },
+            LANGPORT_MUCHELNEY: { amber: 7.30, red: 7.60 },
             MUCHELNEY_THORNEY: { amber: 7.93, red: 8.23 },
             MUCHELNEY_LONGLOAD: { amber: 7.86, red: 8.16 }
         };
@@ -181,7 +180,7 @@
             );
             document.getElementById(
                 "last-reading"
-            ).textContent = `${latestReading.height}m (${minutesAgo} minutes ago)`;
+            ).textContent = `${latestReading.height.toFixed(2)}m (${minutesAgo} minutes ago)`;
 
             // Determine flood statuses
             const langportStatus = determineStatus(
@@ -213,108 +212,96 @@
                 `Muchelney to Long Load: <strong>${muchelneyLongLoadStatus.message}</strong>`;
         }
 
+
         // Determine flood status
         function determineStatus(height, thresholds) {
             if (height >= thresholds.red) {
-                const diff = Math.round((height - thresholds.red) * 100); // Difference in cm
-                return { ...STATUSES.red, message: `${STATUSES.red.message} (+${diff}cm)` };
+                const diff = ((height - thresholds.amber) * 100).toFixed(0); // Difference in cm
+                return { ...STATUSES.red, message: `${STATUSES.red.message} (${diff}cm)` };
             }
             if (height >= thresholds.amber) {
-                const diff = Math.round((height - thresholds.amber) * 100); // Difference in cm
-                return { ...STATUSES.amber, message: `${STATUSES.amber.message} (+${diff}cm)` };
+                const diff = ((height - thresholds.amber) * 100).toFixed(0); // Difference in cm
+                return { ...STATUSES.amber, message: `${STATUSES.amber.message} (${diff}cm)` };
             }
             return STATUSES.green;
         }
 
+
         // Render the chart
         function renderChart(parsedData) {
-            const spec = {
-                $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-                description: "Water levels over time",
-                data: { values: parsedData },
-                layer: [
-                    createLineLayer(),
-                    createThresholdLineLayer(THRESHOLDS.MUCHELNEY_THORNEY.amber, "black"),
-                    createThresholdTextLayer(
-                        THRESHOLDS.MUCHELNEY_THORNEY.amber,
-                        `Muchelney to Thorney`
-                    ),
-                    createThresholdLineLayer(THRESHOLDS.LANGPORT_MUCHELNEY.amber, "black"),
-                    createThresholdTextLayer(
-                        THRESHOLDS.LANGPORT_MUCHELNEY.amber,
-                        `Langport to Muchelney`
-                    ),
-                    createThresholdLineLayer(THRESHOLDS.MUCHELNEY_LONGLOAD.amber, "black"),
-                    createThresholdTextLayer(
-                        THRESHOLDS.MUCHELNEY_LONGLOAD.amber,
-                        `Muchelney to Long Load`
-                    )
-                ],
-                width: window.innerWidth - 80,
-                height: 200
-            };
-            vegaEmbed("#chart", spec);
-        }
+            const timestamps = parsedData.map((d) => d.timestamp);
+            const heights = parsedData.map((d) => d.height);
 
-        // Create main line layer
-        function createLineLayer() {
-            return {
-                mark: { type: "line", color: "#1d70b8", strokeWidth: 3 },
-                encoding: {
-                    x: {
-                        field: "timestamp",
-                        type: "temporal",
-                        title: false,
-                        axis: {
-                            tickCount: "day",
-                            format: "%Y-%m-%d"
-                        }
-                    },
-                    y: {
-                        field: "height",
-                        type: "quantitative",
-                        title: "Water level (m)",
-                        scale: { domainMin: 1 }
-                    }
-                }
-            };
-        }
+            const thresholds = [
+                { name: "Property flooding", value: 8.35 },
+                { name: "Langport to Muchelney", value: THRESHOLDS.LANGPORT_MUCHELNEY.amber },
+                { name: "Muchelney to Long Load", value: THRESHOLDS.MUCHELNEY_LONGLOAD.amber },
+                { name: "Muchelney to Thorney", value: THRESHOLDS.MUCHELNEY_THORNEY.amber },
+                { name: "Top of normal range", value: 7.06 }
+            ];
 
-        // Create threshold line layer
-        function createThresholdLineLayer(threshold, color) {
-            return {
-                mark: { type: "rule", strokeDash: [4, 4], color },
-                encoding: {
-                    y: { datum: threshold },
-                    tooltip: { value: `Threshold: ${threshold}m` }
-                }
-            };
-        }
+            const thresholdLines = thresholds.map((threshold) => ({
+                x: [timestamps[0], timestamps[timestamps.length - 1]],
+                y: [threshold.value, threshold.value],
+                mode: "lines",
+                name: threshold.name,
+                line: { dash: "dot", width: 1, color: "black" }, // Dashed black line
+                hoverinfo: "none" // Disable hover info for the lines
+            }));
 
-        // Create threshold text layer
-        function createThresholdTextLayer(value, label) {
-            return {
-                mark: {
-                    type: "text",
-                    align: "right",
-                    dx: +8,
-                    dy: -6,
-                    font: "Helvetica Neue, Arial, sans-serif",
-                    fontSize: 10,
-                    fontWeight: "normal",
-                    color: "black"
+            const thresholdLabels = thresholds.map((threshold) => ({
+                x: [timestamps[0]], // Position text at the leftmost timestamp
+                y: [threshold.value],
+                mode: "text",
+                text: [`${threshold.name} (${threshold.value.toFixed(2)}m)`], // Label text
+                textposition: "top right", // Align text near the left side of the plot
+                textfont: { family: "Inter, sans-serif", size: 10, color: "black" },
+                showlegend: false, // Hide labels from the legend
+                hoverinfo: "none" // Disable hover info for the text
+            }));
+
+            const waterLevelTrace = {
+                x: timestamps,
+                y: heights,
+                mode: "lines",
+                name: "",
+                line: { color: "#1d70b8", width: 3 },
+                fill: "tozeroy", // Add fill below the line
+                fillcolor: "rgba(173, 216, 230, 0.5)" // Pale blue fill color
+            };
+
+            const layout = {
+                xaxis: {
+                    tickformat: "%Y-%m-%d", // Format to show only the date
+                    showgrid: true,
+                    title: "", // Remove x-axis label
+                    range: [timestamps[0], timestamps[timestamps.length - 1]] // Set range to trim the scale
                 },
-                encoding: {
-                    y: { datum: value },
-                    text: { value: `${label} (${value}m)` },
-                    x: { value: window.innerWidth - 110 }
-                }
+                yaxis: {
+                    showgrid: true,
+                    tickformat: ".1f", // Ensure two decimal places
+                    ticksuffix: "m", // Add " m" as the unit
+                    range: [7, 8.5], // Start at 6.8m, allow Plotly to determine the max
+                    tickfont: { family: "Inter, sans-serif" } // Apply consistent font
+                },
+                showlegend: false, // Hide legend
+                font: { family: "Inter, sans-serif" }, // Use Inter font globally
+                margin: { t: 20, b: 40, l: 40, r: 10 }, // Adjust for tighter layout
+                autosize: true,
+                dragmode: false
             };
+
+            Plotly.newPlot("chart", [waterLevelTrace, ...thresholdLines, ...thresholdLabels], layout, {
+                responsive: true,
+                displayModeBar: false,
+                scrollZoom: false
+            });
         }
+
 
         // Render the map
         function renderMap(latestReading) {
-            const map = L.map("map").setView([51.021, -2.82], 12);
+            const map = L.map("map").setView([51.016, -2.82], 12);
 
             // Add OpenStreetMap tiles
             L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -326,29 +313,29 @@
             addMarker(
                 map,
                 [51.0266797, -2.8174208],
-                `Langport to Muchelney`,
-                THRESHOLDS.LANGPORT_MUCHELNEY,
-                determineMarkerColor(latestReading.height, THRESHOLDS.LANGPORT_MUCHELNEY)
+                "Langport to Muchelney",
+                determineMarkerColor(latestReading.height, THRESHOLDS.LANGPORT_MUCHELNEY),
+                THRESHOLDS.LANGPORT_MUCHELNEY.amber
             );
             addMarker(
                 map,
                 [51.0132813, -2.8149388],
-                `Muchelney to Thorney`,
-                THRESHOLDS.MUCHELNEY_THORNEY,
-                determineMarkerColor(latestReading.height, THRESHOLDS.MUCHELNEY_THORNEY)
+                "Muchelney to Thorney",
+                determineMarkerColor(latestReading.height, THRESHOLDS.MUCHELNEY_THORNEY),
+                THRESHOLDS.MUCHELNEY_THORNEY.amber
             );
             addMarker(
                 map,
                 [51.009468, -2.793615],
-                `Muchelney to Long Load`,
-                THRESHOLDS.MUCHELNEY_LONGLOAD,
-                determineMarkerColor(latestReading.height, THRESHOLDS.MUCHELNEY_LONGLOAD)
+                "Muchelney to Long Load",
+                determineMarkerColor(latestReading.height, THRESHOLDS.MUCHELNEY_LONGLOAD),
+                THRESHOLDS.MUCHELNEY_LONGLOAD.amber
             );
+
         }
 
         // Add a marker to the map
-        function addMarker(map, position, label, thresholds, color) {
-            const thresholdText = `Flood threshold: ${thresholds.amber}m`;
+        function addMarker(map, position, label, color, threshold) {
             L.marker(position, {
                 icon: L.divIcon({
                     className: "custom-icon",
@@ -356,8 +343,9 @@
                 })
             })
                 .addTo(map)
-                .bindPopup(`${label}<br>${thresholdText}`);
+                .bindPopup(`${label}: Threshold ${threshold.toFixed(2)}m`);
         }
+
 
         // Determine marker color
         function determineMarkerColor(height, thresholds) {
