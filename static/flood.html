@@ -23,15 +23,15 @@
         h1 {
             font-size: 1.6rem;
             font-weight: 600;
-            margin: 0px 0px 0px 15px;
-            color: #1d70b8;
+            margin: 5px 0px 0px 15px;
+            color: #1f77b4;
         }
 
         h2 {
             font-size: 1.1rem;
             font-weight: 600;
-            margin: 6px 0px 2px 15px;
-            color: #1d70b8;
+            margin: 6px 0px 3px 15px;
+            color: #1f77b4;
         }
 
         p, ul, li {
@@ -64,10 +64,31 @@
             text-decoration: underline;
         }
 
+        .circle {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            margin-right: 6px; /* Space between circle and text */
+        }
+
+        .circle.green {
+            background-color: #4CAF50;
+        }
+
+        .circle.amber {
+            background-color: #FFC107;
+        }
+
+        .circle.red {
+            background-color: #F44336;
+        }
+
         #map {
-            width: 100%;
+            width: calc(100% - 30px);
             height: 240px;
-            margin-top: 0px;
+            margin: 0px 15px;
+            padding: 0;
         }
 
         #chart {
@@ -91,16 +112,25 @@
     <section>
         <h2>Road status:</h2>
         <ul>
-            <li><span id="emoji-langport-muchelney"></span> <span id="status-langport-muchelney"></span></li>
-            <li><span id="emoji-muchelney-longload"></span> <span id="status-muchelney-longload"></span></li>
-            <li><span id="emoji-muchelney-thorney"></span> <span id="status-muchelney-thorney"></span></li>
+            <li>
+                <span id="circle-langport-muchelney" class="circle"></span>
+                <span id="status-langport-muchelney"></span>
+            </li>
+            <li>
+                <span id="circle-muchelney-longload" class="circle"></span>
+                <span id="status-muchelney-longload"></span>
+            </li>
+            <li>
+                <span id="circle-muchelney-thorney" class="circle"></span>
+                <span id="status-muchelney-thorney"></span>
+            </li>
         </ul>
     </section>
     <div id="chart"></div>
     <div id="map"></div>
 
     <footer>
-        Feedback encouraged: <a href="mailto:b@bede.im">b@bede.im</a>. Sources: 
+        Feedback: <a href="mailto:b@bede.im">b@bede.im</a>. Sources: 
         <a href="https://check-for-flooding.service.gov.uk/station/3379">data</a>, <a href="https://check-for-flooding.service.gov.uk/target-area/112WAFYPM">thresholds</a>
     </footer>
 
@@ -112,17 +142,17 @@
             MUCHELNEY_LONGLOAD: { amber: 7.86, red: 8.16 }
         };
 
-        // Colors, Emojis, and Status Messages
+        // Colours and Status Messages
         const COLORS = {
-            green: "green",
-            amber: "orange",
-            red: "red"
+            green: "#4CAF50",
+            amber: "#FFC107",
+            red: "#F44336"
         };
 
         const STATUSES = {
-            green: { emoji: "🟢", message: "clear" },
-            amber: { emoji: "🟠", message: "flood" },
-            red: { emoji: "🔴", message: "deep flood" }
+            green: { message: "clear" },
+            amber: { message: "flood" },
+            red: { message: "deep flood" }
         };
 
         // Fetch data, create chart, and map
@@ -173,6 +203,7 @@
                 });
         }
 
+
         // Update last reading info and flood status
         function updateLastReadingInfo(latestReading) {
             const minutesAgo = Math.floor(
@@ -196,20 +227,39 @@
                 THRESHOLDS.MUCHELNEY_LONGLOAD
             );
 
-            // Update emojis and status messages
-            document.getElementById("emoji-langport-muchelney").textContent =
-                langportStatus.emoji;
-            document.getElementById("emoji-muchelney-thorney").textContent =
-                muchelneyThorneyStatus.emoji;
-            document.getElementById("emoji-muchelney-longload").textContent =
-                muchelneyLongLoadStatus.emoji;
+            // Dynamically update the circle class and status message
+            const updateCircle = (circleId, status, textId, road) => {
+                const circle = document.getElementById(circleId);
+                const statusText = document.getElementById(textId);
 
-            document.getElementById("status-langport-muchelney").innerHTML =
-                `Langport to Muchelney: <strong>${langportStatus.message}</strong>`;
-            document.getElementById("status-muchelney-thorney").innerHTML =
-                `Muchelney to Thorney: <strong>${muchelneyThorneyStatus.message}</strong>`;
-            document.getElementById("status-muchelney-longload").innerHTML =
-                `Muchelney to Long Load: <strong>${muchelneyLongLoadStatus.message}</strong>`;
+                // Remove existing classes (green, amber, red) before adding new one
+                circle.classList.remove("green", "amber", "red");
+                circle.classList.add(status.color);
+
+                // Update status message
+                statusText.innerHTML = `${road}: <strong>${status.message}</strong>`;
+            };
+
+            updateCircle(
+                "circle-langport-muchelney",
+                langportStatus,
+                "status-langport-muchelney",
+                "Langport to Muchelney"
+            );
+
+            updateCircle(
+                "circle-muchelney-thorney",
+                muchelneyThorneyStatus,
+                "status-muchelney-thorney",
+                "Muchelney to Thorney"
+            );
+
+            updateCircle(
+                "circle-muchelney-longload",
+                muchelneyLongLoadStatus,
+                "status-muchelney-longload",
+                "Muchelney to Long Load"
+            );
         }
 
 
@@ -217,14 +267,15 @@
         function determineStatus(height, thresholds) {
             if (height >= thresholds.red) {
                 const diff = ((height - thresholds.amber) * 100).toFixed(0); // Difference in cm
-                return { ...STATUSES.red, message: `${STATUSES.red.message} (${diff}cm)` };
+                return { ...STATUSES.red, color: "red", message: `${STATUSES.red.message} (${diff}cm)` };
             }
             if (height >= thresholds.amber) {
                 const diff = ((height - thresholds.amber) * 100).toFixed(0); // Difference in cm
-                return { ...STATUSES.amber, message: `${STATUSES.amber.message} (${diff}cm)` };
+                return { ...STATUSES.amber, color: "amber", message: `${STATUSES.amber.message} (${diff}cm)` };
             }
-            return STATUSES.green;
+            return { ...STATUSES.green, color: "green" };
         }
+
 
 
         // Render the chart
@@ -265,9 +316,9 @@
                 y: heights,
                 mode: "lines",
                 name: "",
-                line: { color: "#1d70b8", width: 3 },
+                line: { color: "#1f77b4", width: 3 },
                 fill: "tozeroy", // Add fill below the line
-                fillcolor: "rgba(173, 216, 230, 0.5)" // Pale blue fill color
+                fillcolor: "rgba(31, 118, 180, 0.1)" // Pale blue fill color
             };
 
             const layout = {
@@ -275,6 +326,10 @@
                     tickformat: "%Y-%m-%d", // Format to show only the date
                     showgrid: true,
                     title: "", // Remove x-axis label
+                    tickfont: { 
+                        family: "Inter, sans-serif", 
+                        size: 11 // Reduce font size (default is usually 12)
+                    },
                     range: [timestamps[0], timestamps[timestamps.length - 1]] // Set range to trim the scale
                 },
                 yaxis: {
@@ -282,11 +337,12 @@
                     tickformat: ".1f", // Ensure two decimal places
                     ticksuffix: "m", // Add " m" as the unit
                     range: [7, 8.5], // Start at 6.8m, allow Plotly to determine the max
-                    tickfont: { family: "Inter, sans-serif" } // Apply consistent font
+                    tickfont: { family: "Inter, sans-serif", size: 11 }, // Apply consistent font
+                    side: "right" // Move Y-axis to the right
                 },
                 showlegend: false, // Hide legend
                 font: { family: "Inter, sans-serif" }, // Use Inter font globally
-                margin: { t: 20, b: 40, l: 40, r: 10 }, // Adjust for tighter layout
+                margin: { t: 12, b: 30, l: 15, r: 40 }, // Adjust for tighter layout
                 autosize: true,
                 dragmode: false
             };
