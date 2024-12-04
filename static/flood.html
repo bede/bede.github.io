@@ -122,6 +122,10 @@
                 <span id="status-langport-muchelney"></span>
             </li>
             <li>
+                <span id="circle-hambridge-burrow" class="circle"></span>
+                <span id="status-hambridge-burrow"></span>
+            </li>
+            <li>
                 <span id="circle-muchelney-longload" class="circle"></span>
                 <span id="status-muchelney-longload"></span>
             </li>
@@ -129,23 +133,24 @@
                 <span id="circle-muchelney-thorney" class="circle"></span>
                 <span id="status-muchelney-thorney"></span>
             </li>
+
         </ul>
     </section>
     <div id="chart"></div>
     <div id="map"></div>
 
     <footer>
-        Feedback: <a href="mailto:b@bede.im">b@bede.im</a> | 
-        <a href="https://check-for-flooding.service.gov.uk/station/3379">data</a> | <a href="https://check-for-flooding.service.gov.uk/target-area/112WAFYPM">flood alert</a> | <a href="https://www.somerset.gov.uk/roads-travel-and-parking/emergency-road-closure-gates/">emergency gate status</a>
+        *road height estimated | Feedback: <a href="mailto:b@bede.im">b@bede.im</a> | 
+        <a href="https://check-for-flooding.service.gov.uk/station/3379">data</a> | <a href="https://check-for-flooding.service.gov.uk/target-area/112WAFYPM">flood alert</a> | <a href="https://www.somerset.gov.uk/roads-travel-and-parking/emergency-road-closure-gates/">flood gate status</a>
     </footer>
     </footer>
 
     <script>
-        // Thresholds
         const THRESHOLDS = {
             LANGPORT_MUCHELNEY: { amber: 7.30, red: 7.60 },
             MUCHELNEY_THORNEY: { amber: 7.93, red: 8.23 },
-            MUCHELNEY_LONGLOAD: { amber: 7.86, red: 8.16 }
+            MUCHELNEY_LONGLOAD: { amber: 7.86, red: 8.16 },
+            HAMBRIDGE_BURROW: { amber: 7.50, red: 7.80 }
         };
 
         // Colours and Status Messages
@@ -232,6 +237,10 @@
                 latestReading.height,
                 THRESHOLDS.MUCHELNEY_LONGLOAD
             );
+            const hambridgeBurrowStatus = determineStatus(
+                latestReading.height,
+                THRESHOLDS.HAMBRIDGE_BURROW
+            );
 
             // Dynamically update the circle class and status message
             const updateCircle = (circleId, status, textId, road) => {
@@ -266,6 +275,12 @@
                 "status-muchelney-longload",
                 "Muchelney to Long Load"
             );
+            updateCircle(
+                "circle-hambridge-burrow",
+                hambridgeBurrowStatus,
+                "status-hambridge-burrow",
+                "Hambridge to Burrow*"
+            );
         }
 
 
@@ -291,9 +306,10 @@
 
             const thresholds = [
                 { name: "Property flooding", value: 8.35 },
-                { name: "Langport to Muchelney", value: THRESHOLDS.LANGPORT_MUCHELNEY.amber },
                 { name: "Muchelney to Long Load", value: THRESHOLDS.MUCHELNEY_LONGLOAD.amber },
                 { name: "Muchelney to Thorney", value: THRESHOLDS.MUCHELNEY_THORNEY.amber },
+                { name: "Hambridge to Burrow*", value: THRESHOLDS.HAMBRIDGE_BURROW.amber },
+                { name: "Langport to Muchelney", value: THRESHOLDS.LANGPORT_MUCHELNEY.amber },
                 { name: "Top of normal range", value: 7.06 }
             ];
 
@@ -324,7 +340,8 @@
                 name: "",
                 line: { color: "#1f77b4", width: 3 },
                 fill: "tozeroy", // Add fill below the line
-                fillcolor: "rgba(31, 118, 180, 0.1)" // Pale blue fill color
+                fillcolor: "rgba(31, 118, 180, 0.1)", // Pale blue fill color
+                hovertemplate: "%{x}<br>%{y:.2f}m<extra></extra>" // Custom hover format
             };
 
             const layout = {
@@ -363,15 +380,14 @@
 
         // Render the map
         function renderMap(latestReading) {
-            const map = L.map("map").setView([51.016, -2.82], 12);
+            const map = L.map("map").setView([51.005, -2.82], 12);
 
-            // Add OpenStreetMap tiles
             L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
                 attribution:
                     "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
             }).addTo(map);
 
-            // Add markers
+            // Add markers for all locations
             addMarker(
                 map,
                 [51.0266797, -2.8174208],
@@ -393,10 +409,16 @@
                 determineMarkerColor(latestReading.height, THRESHOLDS.MUCHELNEY_LONGLOAD),
                 THRESHOLDS.MUCHELNEY_LONGLOAD.amber
             );
-
+            addMarker(
+                map,
+                [50.9856105, -2.8500808],
+                "Hambridge to Burrow*",
+                determineMarkerColor(latestReading.height, THRESHOLDS.HAMBRIDGE_BURROW),
+                THRESHOLDS.HAMBRIDGE_BURROW.amber
+            );
         }
 
-        // Add a marker to the map
+        // Add a marker for a location
         function addMarker(map, position, label, color, threshold) {
             L.marker(position, {
                 icon: L.divIcon({
@@ -406,6 +428,13 @@
             })
                 .addTo(map)
                 .bindPopup(`${label}: Threshold ${threshold.toFixed(2)}m`);
+        }
+
+        // Determine marker color based on thresholds
+        function determineMarkerColor(height, thresholds) {
+            if (height >= thresholds.red) return COLORS.red;
+            if (height >= thresholds.amber) return COLORS.amber;
+            return COLORS.green;
         }
 
 
