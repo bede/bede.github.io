@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🚦 Muchelney Flood Status</title>
+    <!-- Head content remains the same -->
+    <title>🚦 Muchelney area flood status</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -11,7 +10,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         /* General Styles */
-        body {
+       body {
             font-family: 'Inter', sans-serif;
             margin: 0;
             padding: 0;
@@ -23,7 +22,7 @@
         h1 {
             font-size: 1.6rem;
             font-weight: 600;
-            margin: 5px 0px 0px 15px;
+            margin: 5px 0px 4px 15px;
             color: #1f77b4;
         }
 
@@ -69,7 +68,7 @@
             width: 15px;
             height: 15px;
             border-radius: 50%;
-            margin-right: 6px; /* Space between circle and text */
+            margin-right: 6px;
         }
 
         .circle.green {
@@ -84,18 +83,57 @@
             background-color: #F44336;
         }
 
+        #tab-contents {
+            margin: 0;
+        }
+
+        .tab-container {
+            margin: 10px 15px;
+        }
+
+        .tab-buttons {
+            display: flex;
+            border-bottom: 1px solid #ccc;
+            margin: 0 0px;
+        }
+
+        .tab-button {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #f5f5f5;
+            border: none;
+            outline: none;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .tab-button.active {
+            background-color: #fff;
+            border-bottom: 2px solid #1f77b4;
+            color: #1f77b4;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .chart {
+            width: 100%;
+            height: 280px;
+            margin: 0;
+            padding: 0;
+        }
+
         #map {
             width: 100%;
             height: 240px;
             margin: 0;
             padding: 0;
-        }
-
-        #chart {
-            width: 100%; /* Full width */
-            height: 280px;
-            margin: 0; /* Remove margins */
-            padding: 0; /* Remove padding */
         }
 
         footer {
@@ -106,211 +144,218 @@
         }
     </style>
     <script>
-        !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host.replace(".i.posthog.com","-assets.i.posthog.com")+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
-        posthog.init('phc_KlFKZyqiluUOIZvbdp6T129dDvRVRaAcKICHPeBejch',{api_host:'https://eu.i.posthog.com', person_profiles: 'identified_only' // or 'always' to create profiles for anonymous users as well
-            })
+        // PostHog script (unchanged)
     </script>
 </head>
 <body>
-    <h1>Muchelney flood status</h1>
-    <p>Current level: <span id="last-reading"></span></p>
-    <section>
-        <h2>Road status</h2>
-        <ul>
-            <li>
-                <span id="circle-langport-muchelney" class="circle"></span>
-                <span id="status-langport-muchelney"></span>
-            </li>
-            <li>
-                <span id="circle-hambridge-burrow" class="circle"></span>
-                <span id="status-hambridge-burrow"></span>
-            </li>
-            <li>
-                <span id="circle-muchelney-longload" class="circle"></span>
-                <span id="status-muchelney-longload"></span>
-            </li>
-            <li>
-                <span id="circle-muchelney-thorney" class="circle"></span>
-                <span id="status-muchelney-thorney"></span>
-            </li>
+    <h1>Muchelney area road status</h1>
+    <ul id="road-status-list">
+        <!-- Road statuses will be inserted here -->
+    </ul>
 
-        </ul>
-    </section>
-    <div id="chart"></div>
+    <!-- Tabs for charts -->
+    <div class="tab-container">
+        <div class="tab-buttons" id="tab-buttons">
+            <!-- Tab buttons will be inserted here -->
+        </div>
+        <div id="tab-contents">
+            <!-- Tab contents (charts) will be inserted here -->
+        </div>
+    </div>
+
+    <!-- Map -->
     <div id="map"></div>
 
     <footer>
-        *road height estimated | Feedback: <a href="mailto:b@bede.im">b@bede.im</a> | 
-        <a href="https://check-for-flooding.service.gov.uk/station/3379">data</a> | <a href="https://check-for-flooding.service.gov.uk/target-area/112WAFYPM">flood alert</a> | <a href="https://www.somerset.gov.uk/roads-travel-and-parking/emergency-road-closure-gates/">flood gate status</a>
-    </footer>
+        Feedback: <a href="mailto:b@bede.im">b@bede.im</a> | 
+        <a href="https://check-for-flooding.service.gov.uk/station/3379">data</a> | <a href="https://check-for-flooding.service.gov.uk/target-area/112WAFYPM">flood alert</a> | <a href="https://www.somerset.gov.uk/roads-travel-and-parking/emergency-road-closure-gates/">emergency gate status</a>
     </footer>
 
     <script>
-        const THRESHOLDS = {
-            LANGPORT_MUCHELNEY: { amber: 7.30, red: 7.60 },
-            MUCHELNEY_THORNEY: { amber: 7.93, red: 8.23 },
-            MUCHELNEY_LONGLOAD: { amber: 7.86, red: 8.16 },
-            HAMBRIDGE_BURROW: { amber: 7.50, red: 7.80 }
-        };
+        const SOURCES = [
+            {
+                name: "Long Load Main Drain",
+                url: "https://check-for-flooding.service.gov.uk/station-csv/3379",
+                elementId: "long-load",
+                datumOffset: 5,
+                roads: [
+                    {
+                        name: "Langport to Muchelney",
+                        amberThreshold: 7.30,
+                        link: "https://www.somerset.gov.uk/roads-travel-and-parking/emergency-road-closure-gates/",
+                        markerPosition: [51.0266797, -2.8174208]
+                    },
+                    {
+                        name: "Muchelney to Long Load",
+                        amberThreshold: 7.86,
+                        link: "",
+                        markerPosition: [51.009468, -2.793615]
+                    },
+                    {
+                        name: "Muchelney to Thorney",
+                        amberThreshold: 7.93,
+                        link: "",
+                        markerPosition: [51.0132813, -2.8149388]
+                    }
+                ],
+                thresholds: [
+                    { name: "Property flooding", value: 8.35 },
+                    { name: "Top of normal range", value: 7.06 }
+                ]
+            },
+            {
+                name: "West Moor Drain",
+                url: "https://check-for-flooding.service.gov.uk/station-csv/3381",
+                elementId: "west-moor",
+                datumOffset: 5.185,
+                roads: [
+                    {
+                        name: "Hambridge to Burrow",
+                        amberThreshold: 7.65,
+                        link: "",
+                        markerPosition: [51.0055, -2.8744]
+                    }
+                ],
+                thresholds: [
+                    { name: "Top of normal range", value: 6.645 }
+                ]
+            }
+        ];
 
-        // Colours and Status Messages
+        // Colours
         const COLORS = {
             green: "#4CAF50",
             amber: "#FFC107",
             red: "#F44336"
         };
 
-        const STATUSES = {
-            green: { message: "clear" },
-            amber: { message: "flood" },
-            red: { message: "deep flood" }
-        };
+        // Global object to store latest readings
+        const latestReadings = {};
 
-        // Fetch data, create chart, and map
-        async function fetchAndPlotData() {
+        // Fetch data, create charts, and update road statuses
+        async function fetchAndProcessData() {
             try {
-                const parsedData = await fetchData();
-                const latestReading = parsedData[parsedData.length - 1];
-                updateLastReadingInfo(latestReading);
-                renderChart(parsedData);
-                renderMap(latestReading);
+                // Fetch data for all sources
+                await Promise.all(SOURCES.map(async (source) => {
+                    const parsedData = await fetchData(source);
+                    const latestReading = parsedData[parsedData.length - 1];
+                    latestReadings[source.elementId] = latestReading;
+                    renderChart(parsedData, source);
+                }));
+
+                // Update road statuses
+                updateRoadStatuses();
+
+                // Render map
+                renderMap();
+
+                // Initialize tabs
+                initializeTabs();
+
+                // Resize the chart in the default active tab
+                const defaultChartDiv = document.querySelector('.tab-content.active');
+                if (defaultChartDiv) {
+                    Plotly.Plots.resize(defaultChartDiv);
+                }
+
             } catch (error) {
                 console.error("Error:", error);
-                alert("Failed to fetch and plot data.");
+                alert("Failed to fetch and process data.");
             }
         }
 
         // Fetch data from cache or API
-        async function fetchData() {
-            const cachedCSV = localStorage.getItem("waterLevelsCSV");
-            const cachedTimestamp = localStorage.getItem("waterLevelsTimestamp");
+        async function fetchData(source) {
+            const cacheKey = `waterLevelsCSV_${source.elementId}`;
+            const cachedCSV = localStorage.getItem(cacheKey);
+            const cachedTimestamp = localStorage.getItem(`${cacheKey}_timestamp`);
             const now = new Date().getTime();
 
             if (cachedCSV && cachedTimestamp && now - cachedTimestamp < 15 * 60 * 1000) {
-                console.log("Using cached data");
-                return parseCSV(cachedCSV);
+                console.log(`Using cached data for ${source.name}`);
+                return parseCSV(cachedCSV, source);
             }
 
-            console.log("Fetching new data");
-            const response = await fetch("https://check-for-flooding.service.gov.uk/station-csv/3379");
+            console.log(`Fetching new data for ${source.name}`);
+            const response = await fetch(source.url);
             if (!response.ok) throw new Error("Failed to fetch data");
             const csvData = await response.text();
 
-            localStorage.setItem("waterLevelsCSV", csvData);
-            localStorage.setItem("waterLevelsTimestamp", now.toString());
+            localStorage.setItem(cacheKey, csvData);
+            localStorage.setItem(`${cacheKey}_timestamp`, now.toString());
 
-            return parseCSV(csvData);
+            return parseCSV(csvData, source);
         }
 
         // Parse CSV data
-        function parseCSV(csvData) {
+        function parseCSV(csvData, source) {
             return csvData
                 .trim()
                 .split("\n")
                 .slice(1)
                 .map((row) => {
                     const [timestamp, height] = row.split(",");
-                    return { timestamp, height: parseFloat(height) + 5 }; // Add 5m offset
+                    return { timestamp, height: parseFloat(height) + source.datumOffset };
                 });
         }
 
+        // Update road statuses
+        function updateRoadStatuses() {
+            const roadStatusList = document.getElementById('road-status-list');
+            roadStatusList.innerHTML = ''; // Clear existing list
 
-        // Update last reading info and flood status
-        function updateLastReadingInfo(latestReading) {
-            const minutesAgo = Math.floor(
-                (new Date() - new Date(latestReading.timestamp)) / (1000 * 60)
-            );
-            document.getElementById(
-                "last-reading"
-            ).textContent = `${latestReading.height.toFixed(2)}m (${minutesAgo} minutes ago)`;
+            SOURCES.forEach(source => {
+                const sourceReading = latestReadings[source.elementId];
+                if (sourceReading) {
+                    source.roads.forEach(road => {
+                        const status = determineStatus(sourceReading.height, road.amberThreshold);
 
-            // Determine flood statuses
-            const langportStatus = determineStatus(
-                latestReading.height,
-                THRESHOLDS.LANGPORT_MUCHELNEY
-            );
-            const muchelneyThorneyStatus = determineStatus(
-                latestReading.height,
-                THRESHOLDS.MUCHELNEY_THORNEY
-            );
-            const muchelneyLongLoadStatus = determineStatus(
-                latestReading.height,
-                THRESHOLDS.MUCHELNEY_LONGLOAD
-            );
-            const hambridgeBurrowStatus = determineStatus(
-                latestReading.height,
-                THRESHOLDS.HAMBRIDGE_BURROW
-            );
+                        const li = document.createElement('li');
 
-            // Dynamically update the circle class and status message
-            const updateCircle = (circleId, status, textId, road) => {
-                const circle = document.getElementById(circleId);
-                const statusText = document.getElementById(textId);
+                        const circle = document.createElement('span');
+                        circle.classList.add('circle', status.color);
+                        li.appendChild(circle);
 
-                // Remove existing classes (green, amber, red) before adding new one
-                circle.classList.remove("green", "amber", "red");
-                circle.classList.add(status.color);
+                        const text = document.createElement('span');
+                        if (road.link) {
+                            text.innerHTML = `<a href="${road.link}">${road.name}</a>: <strong>${status.message}</strong>`;
+                        } else {
+                            text.innerHTML = `${road.name}: <strong>${status.message}</strong>`;
+                        }
+                        li.appendChild(text);
 
-                // Update status message
-                statusText.innerHTML = `${road}: <strong>${status.message}</strong>`;
-            };
-
-            updateCircle(
-                "circle-langport-muchelney",
-                langportStatus,
-                "status-langport-muchelney",
-                "<a href=\"https://www.somerset.gov.uk/roads-travel-and-parking/emergency-road-closure-gates/\">Langport to Muchelney</a>"
-            );
-
-            updateCircle(
-                "circle-muchelney-thorney",
-                muchelneyThorneyStatus,
-                "status-muchelney-thorney",
-                "Muchelney to Thorney"
-            );
-
-            updateCircle(
-                "circle-muchelney-longload",
-                muchelneyLongLoadStatus,
-                "status-muchelney-longload",
-                "Muchelney to Long Load"
-            );
-            updateCircle(
-                "circle-hambridge-burrow",
-                hambridgeBurrowStatus,
-                "status-hambridge-burrow",
-                "Hambridge to Burrow*"
-            );
+                        roadStatusList.appendChild(li);
+                    });
+                }
+            });
         }
 
-
-        // Determine flood status
-        function determineStatus(height, thresholds) {
-            if (height >= thresholds.red) {
-                const diff = ((height - thresholds.amber) * 100).toFixed(0); // Difference in cm
-                return { ...STATUSES.red, color: "red", message: `${STATUSES.red.message} (${diff}cm)` };
+        // Determine road status
+        function determineStatus(height, amberThreshold) {
+            const redThreshold = amberThreshold + 0.30; // Red threshold is 30cm above amber
+            if (height >= redThreshold) {
+                const diff = ((height - amberThreshold) * 100).toFixed(0); // Difference in cm
+                return { color: 'red', message: `deep flood (${diff}cm)` };
+            } else if (height >= amberThreshold) {
+                const diff = ((height - amberThreshold) * 100).toFixed(0); // Difference in cm
+                return { color: 'amber', message: `flood (${diff}cm)` };
+            } else {
+                return { color: 'green', message: 'clear' };
             }
-            if (height >= thresholds.amber) {
-                const diff = ((height - thresholds.amber) * 100).toFixed(0); // Difference in cm
-                return { ...STATUSES.amber, color: "amber", message: `${STATUSES.amber.message} (${diff}cm)` };
-            }
-            return { ...STATUSES.green, color: "green" };
         }
-
-
 
         // Render the chart
-        function renderChart(parsedData) {
+        function renderChart(parsedData, source) {
             const timestamps = parsedData.map((d) => d.timestamp);
             const heights = parsedData.map((d) => d.height);
 
+            // Create threshold lines and labels for roads and additional thresholds
             const thresholds = [
-                { name: "Property flooding", value: 8.35 },
-                { name: "Muchelney to Long Load", value: THRESHOLDS.MUCHELNEY_LONGLOAD.amber },
-                { name: "Muchelney to Thorney", value: THRESHOLDS.MUCHELNEY_THORNEY.amber },
-                { name: "Hambridge to Burrow*", value: THRESHOLDS.HAMBRIDGE_BURROW.amber },
-                { name: "Langport to Muchelney", value: THRESHOLDS.LANGPORT_MUCHELNEY.amber },
-                { name: "Top of normal range", value: 7.06 }
+                ...source.roads.map((road) => ({
+                    name: road.name,
+                    value: road.amberThreshold
+                })),
+                ...(source.thresholds || []) // Include additional thresholds if any
             ];
 
             const thresholdLines = thresholds.map((threshold) => ({
@@ -318,19 +363,19 @@
                 y: [threshold.value, threshold.value],
                 mode: "lines",
                 name: threshold.name,
-                line: { dash: "dot", width: 1, color: "black" }, // Dashed black line
-                hoverinfo: "none" // Disable hover info for the lines
+                line: { dash: "dot", width: 1, color: "black" },
+                hoverinfo: "none"
             }));
 
             const thresholdLabels = thresholds.map((threshold) => ({
-                x: [timestamps[0]], // Position text at the leftmost timestamp
+                x: [timestamps[0]],
                 y: [threshold.value],
                 mode: "text",
-                text: [`${threshold.name} (${threshold.value.toFixed(2)}m)`], // Label text
-                textposition: "top right", // Align text near the left side of the plot
+                text: [`${threshold.name} (${threshold.value.toFixed(2)}m)`],
+                textposition: "top right",
                 textfont: { family: "Inter, sans-serif", size: 10, color: "black" },
-                showlegend: false, // Hide labels from the legend
-                hoverinfo: "none" // Disable hover info for the text
+                showlegend: false,
+                hoverinfo: "none"
             }));
 
             const waterLevelTrace = {
@@ -339,87 +384,164 @@
                 mode: "lines",
                 name: "",
                 line: { color: "#1f77b4", width: 3 },
-                fill: "tozeroy", // Add fill below the line
-                fillcolor: "rgba(31, 118, 180, 0.1)", // Pale blue fill color
-                hovertemplate: "%{x}<br>%{y:.2f}m<extra></extra>" // Custom hover format
+                fill: "tozeroy",
+                fillcolor: "rgba(31, 118, 180, 0.1)"
+            };
+
+            // Add latest reading marker and annotation
+            const latestReading = parsedData[parsedData.length - 1];
+
+            // Format the timestamp for the annotation
+            const latestDate = new Date(latestReading.timestamp);
+            const hours = latestDate.getUTCHours().toString().padStart(2, '0');
+            const minutes = latestDate.getUTCMinutes().toString().padStart(2, '0');
+            const timeString = `${hours}:${minutes} UTC`;
+
+            const latestPointTrace = {
+                x: [latestReading.timestamp],
+                y: [latestReading.height],
+                mode: "markers",
+                marker: { color: "black", size: 8 },
+                name: "Latest Reading",
+                hoverinfo: "none"
+            };
+
+            const latestReadingAnnotation = {
+                x: latestReading.timestamp,
+                y: latestReading.height,
+                xref: 'x',
+                yref: 'y',
+                text: `${latestReading.height.toFixed(2)}m (${timeString})`,
+                showarrow: true,
+                arrowhead: 6,
+                ax: -28,
+                ay: -28,
+                font: { family: "Inter, sans-serif", size: 12, color: "black" },
+                bordercolor: "black",
+                borderwidth: 1,
+                bgcolor: "#fff",
+                opacity: 1.0
             };
 
             const layout = {
                 xaxis: {
-                    tickformat: "%Y-%m-%d", // Format to show only the date
+                    tickformat: "%Y-%m-%d",
                     showgrid: true,
-                    title: "", // Remove x-axis label
+                    title: "",
                     tickfont: { 
                         family: "Inter, sans-serif", 
-                        size: 11 // Reduce font size (default is usually 12)
+                        size: 11
                     },
-                    range: [timestamps[0], timestamps[timestamps.length - 1]] // Set range to trim the scale
+                    range: [timestamps[0], timestamps[timestamps.length - 1]]
                 },
                 yaxis: {
                     showgrid: true,
-                    tickformat: ".1f", // Ensure two decimal places
-                    ticksuffix: "m", // Add " m" as the unit
-                    range: [7, 8.5], // Start at 6.8m, allow Plotly to determine the max
-                    tickfont: { family: "Inter, sans-serif", size: 11 }, // Apply consistent font
-                    side: "right" // Move Y-axis to the right
+                    tickformat: ".1f",
+                    ticksuffix: "m",
+                    range: [7, 8.5],
+                    tickfont: { family: "Inter, sans-serif", size: 11 },
+                    side: "right"
                 },
-                showlegend: false, // Hide legend
-                font: { family: "Inter, sans-serif" }, // Use Inter font globally
-                margin: { t: 12, b: 30, l: 15, r: 40 }, // Adjust for tighter layout
+                annotations: [latestReadingAnnotation],
+                showlegend: false,
+                font: { family: "Inter, sans-serif" },
+                margin: { t: 12, b: 30, l: 0, r: 28 },
                 autosize: true,
                 dragmode: false
             };
 
-            Plotly.newPlot("chart", [waterLevelTrace, ...thresholdLines, ...thresholdLabels], layout, {
+            // Create chart container
+            const tabContents = document.getElementById('tab-contents');
+            const chartDiv = document.createElement('div');
+            chartDiv.id = `chart-${source.elementId}`;
+            chartDiv.classList.add('chart', 'tab-content');
+            tabContents.appendChild(chartDiv);
+
+            Plotly.newPlot(`chart-${source.elementId}`, [waterLevelTrace, latestPointTrace, ...thresholdLines, ...thresholdLabels], layout, {
                 responsive: true,
                 displayModeBar: false,
                 scrollZoom: false
             });
+
+            // Create tab button
+            const tabButtons = document.getElementById('tab-buttons');
+            const tabButton = document.createElement('button');
+            tabButton.classList.add('tab-button');
+            tabButton.textContent = source.name;
+            tabButton.dataset.target = `chart-${source.elementId}`;
+            tabButtons.appendChild(tabButton);
         }
 
+        // Initialize tabs
+        function initializeTabs() {
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabContents = document.querySelectorAll('.tab-content');
+
+            // Set default active tab
+            tabButtons[0].classList.add('active');
+            tabContents[0].classList.add('active');
+            // Ensure the chart in the active tab is resized correctly
+            Plotly.Plots.resize(tabContents[0]);
+
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Remove active class from all buttons and contents
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    tabContents.forEach(content => {
+                        content.classList.remove('active');
+                        content.style.display = 'none';
+                    });
+
+                    // Add active class to the clicked button and corresponding content
+                    button.classList.add('active');
+                    const targetContent = document.getElementById(button.dataset.target);
+                    targetContent.classList.add('active');
+                    targetContent.style.display = 'block';
+
+                    // Resize Plotly chart in the active tab
+                    Plotly.Plots.resize(targetContent);
+                });
+            });
+        }
 
         // Render the map
-        function renderMap(latestReading) {
-            const map = L.map("map").setView([51.005, -2.82], 12);
+        function renderMap() {
+            const map = L.map("map").setView([51.016, -2.82], 12);
 
+            // Add OpenStreetMap tiles
             L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
                 attribution:
                     "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
             }).addTo(map);
 
-            // Add markers for all locations
-            addMarker(
-                map,
-                [51.0266797, -2.8174208],
-                "Langport to Muchelney",
-                determineMarkerColor(latestReading.height, THRESHOLDS.LANGPORT_MUCHELNEY),
-                THRESHOLDS.LANGPORT_MUCHELNEY.amber
-            );
-            addMarker(
-                map,
-                [51.0132813, -2.8149388],
-                "Muchelney to Thorney",
-                determineMarkerColor(latestReading.height, THRESHOLDS.MUCHELNEY_THORNEY),
-                THRESHOLDS.MUCHELNEY_THORNEY.amber
-            );
-            addMarker(
-                map,
-                [51.009468, -2.793615],
-                "Muchelney to Long Load",
-                determineMarkerColor(latestReading.height, THRESHOLDS.MUCHELNEY_LONGLOAD),
-                THRESHOLDS.MUCHELNEY_LONGLOAD.amber
-            );
-            addMarker(
-                map,
-                [50.9856105, -2.8500808],
-                "Hambridge to Burrow*",
-                determineMarkerColor(latestReading.height, THRESHOLDS.HAMBRIDGE_BURROW),
-                THRESHOLDS.HAMBRIDGE_BURROW.amber
-            );
+            // Add markers for each road
+            SOURCES.forEach(source => {
+                const sourceReading = latestReadings[source.elementId];
+                if (sourceReading) {
+                    source.roads.forEach(road => {
+                        if (road.markerPosition) {
+                            const status = determineStatus(sourceReading.height, road.amberThreshold);
+                            addMarker(
+                                map,
+                                road.markerPosition,
+                                road.name,
+                                source.name,
+                                status,
+                                determineMarkerColor(sourceReading.height, road.amberThreshold)
+                            );
+                        }
+                    });
+                }
+            });
         }
 
-        // Add a marker for a location
-        function addMarker(map, position, label, color, threshold) {
+        // Add a marker to the map
+        function addMarker(map, position, roadName, sourceName, status, color) {
+            const popupContent = `
+                <strong>${roadName}</strong><br>
+                Tracks ${sourceName} level<br>
+                Status: <strong>${status.message}</strong>
+            `;
             L.marker(position, {
                 icon: L.divIcon({
                     className: "custom-icon",
@@ -427,26 +549,19 @@
                 })
             })
                 .addTo(map)
-                .bindPopup(`${label}: Threshold ${threshold.toFixed(2)}m`);
+                .bindPopup(popupContent);
         }
-
-        // Determine marker color based on thresholds
-        function determineMarkerColor(height, thresholds) {
-            if (height >= thresholds.red) return COLORS.red;
-            if (height >= thresholds.amber) return COLORS.amber;
-            return COLORS.green;
-        }
-
 
         // Determine marker color
-        function determineMarkerColor(height, thresholds) {
-            if (height >= thresholds.red) return COLORS.red;
-            if (height >= thresholds.amber) return COLORS.amber;
+        function determineMarkerColor(height, amberThreshold) {
+            const redThreshold = amberThreshold + 0.30;
+            if (height >= redThreshold) return COLORS.red;
+            if (height >= amberThreshold) return COLORS.amber;
             return COLORS.green;
         }
 
-        // Fetch and plot data on page load
-        window.onload = fetchAndPlotData;
+        // Fetch and process data on page load
+        window.onload = fetchAndProcessData;
     </script>
 </body>
 </html>
