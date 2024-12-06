@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- Head content remains the same -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🚦 Muchelney area flood status</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
@@ -19,41 +19,69 @@
             color: #333;
         }
 
-        h1 {
-            font-size: 1.61rem;
-            font-weight: 600;
-            margin: 5px 0px 5px 15px;
+        a {
             color: #1f77b4;
         }
 
-        p, ul, li {
+        a:hover {
+            text-decoration: underline; /* Optional: underline on hover for better visibility */
+        }
+
+        #map-container {
+            position: relative;
+            width: 100%;
+            height: 460px;
+            overflow: hidden;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 460px;
+            z-index: 1;
+        }
+
+        #map-overlay {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px; /* Full width minus 30px total horizontal margin on small screens */
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 10px 15px;
+            border-radius: 4px;
+            z-index: 2;
+            /* No max-width here, so it can be full width on small screens */
+        }
+
+        /* On larger screens, introduce a fixed max-width and remove `right` for a narrower overlay */
+        @media (min-width: 768px) {
+            #map-overlay {
+                max-width: 400px; /* Fixed max width on large screens (adjust as needed) */
+                right: auto;      /* Allows the overlay to not stretch fully across the screen */
+            }
+        }
+
+
+        #map-overlay h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin: 0 0 10px 0;
+            color: #1f77b4;
+        }
+
+        #map-overlay ul {
             margin: 0;
-            padding: 0;
-        }
-
-        p {
-            font-size: 1rem;
-            margin: 2px 15px;
-        }
-
-        ul {
-            margin: 0 15px 10px 15px;
             padding: 0;
             list-style: none;
         }
 
-        ul li {
+        #map-overlay ul li {
             font-size: 1rem;
             margin-bottom: 5px;
-        }
-
-        a {
-            color: #1d70b8;
-            text-decoration: none;
-        }
-
-        a:hover {
-            text-decoration: underline;
+            display: flex;
+            align-items: center;
         }
 
         .circle {
@@ -92,7 +120,7 @@
         }
 
         .tab-button {
-            padding: 15px 10px;
+            padding: 10px 8px;
             font-size: 0.9rem;
             cursor: pointer;
             background-color: #f5f5f5;
@@ -120,14 +148,7 @@
 
         .chart {
             width: 100%;
-            height: 280px; /* Responsive height based on viewport height */
-            margin: 0;
-            padding: 0;
-        }
-
-        #map {
-            width: 100%;
-            height: 240px;
+            height: 280px; /* Adjust as needed */
             margin: 0;
             padding: 0;
         }
@@ -137,22 +158,18 @@
             text-align: center;
             color: #555;
         }
-
-        /* Additional Flexbox Adjustments */
-        ul li {
-            display: flex;
-            align-items: center;
-        }
     </style>
-    <script>
-        // PostHog script (unchanged)
-    </script>
 </head>
 <body>
-    <h1>Muchelney area road status</h1>
-    <ul id="road-status-list">
-        <!-- Road statuses will be inserted here -->
-    </ul>
+    <div id="map-container">
+        <div id="map-overlay">
+            <h1>Muchelney area flood status</h1>
+            <ul id="road-status-list">
+                <!-- Road statuses will be inserted here -->
+            </ul>
+        </div>
+        <div id="map"></div>
+    </div>
 
     <!-- Tabs for charts -->
     <div class="tab-container">
@@ -164,15 +181,14 @@
         </div>
     </div>
 
-    <!-- Map -->
-    <div id="map"></div>
-
     <footer>
         Feedback: <a href="mailto:b@bede.im">b@bede.im</a> | 
-        <a href="https://check-for-flooding.service.gov.uk/station/3379">data</a> | <a href="https://check-for-flooding.service.gov.uk/target-area/112WAFYPM">flood alert</a> | <a href="https://www.somerset.gov.uk/roads-travel-and-parking/emergency-road-closure-gates/">emergency gate status</a>
+        <a href="https://check-for-flooding.service.gov.uk/station/3379">data</a> | <a href="https://check-for-flooding.service.gov.uk/target-area/112WAFYPM">flood alert</a>
     </footer>
 
     <script>
+        // JavaScript code
+
         const SOURCES = [
             {
                 name: "Long Load Main Drain",
@@ -336,7 +352,7 @@
             const redThreshold = amberThreshold + 0.30; // Red threshold is 30cm above amber
             if (height >= redThreshold) {
                 const diff = ((height - amberThreshold) * 100).toFixed(0); // Difference in cm
-                return { color: 'red', message: `deep flood (${diff}cm)` };
+                return { color: 'red', message: `flood (${diff}cm)` };
             } else if (height >= amberThreshold) {
                 const diff = ((height - amberThreshold) * 100).toFixed(0); // Difference in cm
                 return { color: 'amber', message: `flood (${diff}cm)` };
@@ -345,10 +361,9 @@
             }
         }
 
-        // Render the chart
         function renderChart(parsedData, source) {
-            const timestamps = parsedData.map((d) => d.timestamp);
-            const heights = parsedData.map((d) => d.height);
+            const timestamps = parsedData.map(d => d.timestamp);
+            const heights = parsedData.map(d => d.height);
 
             // Create threshold lines and labels for roads and additional thresholds
             const thresholds = [
@@ -356,10 +371,10 @@
                     name: road.name,
                     value: road.amberThreshold
                 })),
-                ...(source.thresholds || []) // Include additional thresholds if any
+                ...(source.thresholds || [])
             ];
 
-            const thresholdLines = thresholds.map((threshold) => ({
+            const thresholdLines = thresholds.map(threshold => ({
                 x: [timestamps[0], timestamps[timestamps.length - 1]],
                 y: [threshold.value, threshold.value],
                 mode: "lines",
@@ -373,7 +388,7 @@
                 y: [threshold.value],
                 mode: "text",
                 text: [`${threshold.name} (${threshold.value.toFixed(2)}m)`],
-                textposition: "top right",
+                textposition: "top right", // Change this from "top right" to "top left" for left alignment
                 textfont: { family: "Inter, sans-serif", size: 10, color: "black" },
                 showlegend: false,
                 hoverinfo: "none"
@@ -384,15 +399,14 @@
                 y: heights,
                 mode: "lines",
                 name: "",
-                line: { color: "#1f77b4", width: 3 },
+                line: { color: "#1f77b4", width: 2 },
                 fill: "tozeroy",
                 fillcolor: "rgba(31, 118, 180, 0.1)"
             };
 
-            // Add latest reading marker and annotation
             const latestReading = parsedData[parsedData.length - 1];
 
-            // Format the timestamp for the annotation
+            // Latest Reading Marker and Annotation
             const latestDate = new Date(latestReading.timestamp);
             const hours = latestDate.getUTCHours().toString().padStart(2, '0');
             const minutes = latestDate.getUTCMinutes().toString().padStart(2, '0');
@@ -415,8 +429,8 @@
                 text: `${latestReading.height.toFixed(2)}m (${timeString})`,
                 showarrow: true,
                 arrowhead: 6,
-                ax: -28,
-                ay: -28,
+                ax: -22,
+                ay: -22,
                 font: { family: "Inter, sans-serif", size: 12, color: "black" },
                 bordercolor: "black",
                 borderwidth: 1,
@@ -424,31 +438,49 @@
                 opacity: 1.0
             };
 
+            // Calculate dynamic y-axis range
+            const dataMin = Math.min(...heights);
+            const dataMax = Math.max(...heights);
+            const thresholdValues = thresholds.map(t => t.value);
+            const thresholdsMin = Math.min(...thresholdValues);
+            const thresholdsMax = Math.max(...thresholdValues);
+
+            const yPadding = 0.1;
+            let yMin = Math.min(dataMin, thresholdsMin) - yPadding;
+            let yMax = Math.max(dataMax, thresholdsMax) + yPadding;
+            if (yMin < 0) yMin = 0;
+
             const layout = {
                 xaxis: {
                     tickformat: "%Y-%m-%d",
                     showgrid: true,
                     title: "",
-                    tickfont: { 
-                        family: "Inter, sans-serif", 
-                        size: 11
-                    },
+                    tickfont: { family: "Inter, sans-serif", size: 11 },
                     range: [timestamps[0], timestamps[timestamps.length - 1]]
                 },
                 yaxis: {
                     showgrid: true,
-                    tickformat: ".1f",
+                    tickformat: ".2f",
                     ticksuffix: "m",
-                    range: [6.5, 8.5],
+                    range: [yMin, yMax],
                     tickfont: { family: "Inter, sans-serif", size: 11 },
                     side: "right"
                 },
                 annotations: [latestReadingAnnotation],
                 showlegend: false,
                 font: { family: "Inter, sans-serif" },
-                margin: { t: 12, b: 30, l: 0, r: 28 },
+                margin: { t: 12, b: 30, l: 0, r: 34 },
                 autosize: true,
                 dragmode: false
+            };
+
+            const currentLevelLine = {
+                x: [timestamps[0], timestamps[timestamps.length - 1]],
+                y: [latestReading.height, latestReading.height],
+                mode: "lines",
+                name: "Current Level",
+                line: { width: 2, color: "black" },
+                hoverinfo: "none"
             };
 
             // Create chart container
@@ -458,11 +490,16 @@
             chartDiv.classList.add('chart', 'tab-content');
             tabContents.appendChild(chartDiv);
 
-            Plotly.newPlot(`chart-${source.elementId}`, [waterLevelTrace, latestPointTrace, ...thresholdLines, ...thresholdLabels], layout, {
-                responsive: true,
-                displayModeBar: false,
-                scrollZoom: false
-            });
+            Plotly.newPlot(
+                `chart-${source.elementId}`,
+                [waterLevelTrace, latestPointTrace, ...thresholdLines, ...thresholdLabels, currentLevelLine],
+                layout,
+                {
+                    responsive: true,
+                    displayModeBar: false,
+                    scrollZoom: false
+                }
+            );
 
             // Create tab button
             const tabButtons = document.getElementById('tab-buttons');
@@ -472,6 +509,7 @@
             tabButton.dataset.target = `chart-${source.elementId}`;
             tabButtons.appendChild(tabButton);
         }
+
 
         // Initialize tabs
         function initializeTabs() {
@@ -507,12 +545,24 @@
 
         // Render the map
         function renderMap() {
-            const map = L.map("map").setView([51.0, -2.82], 11);
+            const map = L.map('map', {
+                attributionControl: false,
+                scrollWheelZoom: false,
+                boxZoom: false,
+                boxZoom: false,
+                keyboard: false,  
+                zoomControl: false
+            }).setView([51.028, -2.82], 12);
 
             // Add OpenStreetMap tiles
             L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
                 attribution:
                     "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
+            }).addTo(map);
+
+            // Add zoom control to the right side
+            L.control.zoom({
+                position: 'bottomleft' // Move zoom control to the top right corner
             }).addTo(map);
 
             // Add markers for each road
