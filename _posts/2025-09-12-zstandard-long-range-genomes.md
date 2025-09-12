@@ -16,7 +16,7 @@ I was initially underwhelmed by `--long`'s modest reduction of  the 661k dataset
 
 | Compression              | Line length  | Size (GiB) | Compression ratio |
 | :-------------------------- | ------------ | ---------- | ----------------- |
-| Uncompressed | 60 | 2460       | -                 |
+| Uncompressed | 60 | 2460       | 1                |
 | Gzip (pigz)                 | 60 | 751        | 3.3               |
 | Zstandard                        | 60 | 777        | 3.2               |
 | Zstandard `--long`               | 60 | 641        | 3.8               |

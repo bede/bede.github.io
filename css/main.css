@@ -459,9 +459,6 @@ footer {
     margin: 1em 0;
     width: 100%;
     max-width: 100%;
-    overflow-x: auto;
-    display: block;
-    white-space: nowrap;
   }
   
   div.content table th,
@@ -470,9 +467,7 @@ footer {
     padding: 6px 8px;
     text-align: left;
     font-size: 14px;
-    min-width: 0;
-    word-break: break-word;
-    white-space: normal;
+    word-wrap: break-word;
   }
   
   div.content table th {
@@ -504,9 +499,8 @@ footer {
   /* Responsive embedded content */
   div.content .bluesky-embed,
   div.content blockquote[data-bluesky-uri] {
-    max-width: 100% !important;
-    width: 100% !important;
-    overflow: hidden;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   div.content iframe,
