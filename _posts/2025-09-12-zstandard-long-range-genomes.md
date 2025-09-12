@@ -14,7 +14,7 @@ I was initially underwhelmed by `--long`'s modest reduction of  the 661k dataset
 **661k, single FASTA file**
 
 
-| Compression              | Line length  | Size (GiB) | Compression ratio |
+| Compression              | Line length  | Size (GiB) | Ratio |
 | :-------------------------- | ------------ | ---------- | ----------------- |
 | Uncompressed | 60 | 2460       | 1                |
 | Gzip (pigz)                 | 60 | 751        | 3.3               |
