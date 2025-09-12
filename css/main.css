@@ -458,13 +458,21 @@ footer {
     border-collapse: collapse;
     margin: 1em 0;
     width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    display: block;
+    white-space: nowrap;
   }
   
   div.content table th,
   div.content table td {
     border: 1px solid #ddd;
-    padding: 8px 12px;
+    padding: 6px 8px;
     text-align: left;
+    font-size: 14px;
+    min-width: 0;
+    word-break: break-word;
+    white-space: normal;
   }
   
   div.content table th {
@@ -479,6 +487,49 @@ footer {
   
   div.content table tr:hover {
     background-color: #f0f0f0;
+  }
+
+  /* Responsive table wrapper */
+  div.content .table-wrapper {
+    overflow-x: auto;
+    margin: 1em 0;
+  }
+  
+  div.content .table-wrapper table {
+    margin: 0;
+    display: table;
+    white-space: nowrap;
+  }
+
+  /* Responsive embedded content */
+  div.content .bluesky-embed,
+  div.content blockquote[data-bluesky-uri] {
+    max-width: 100% !important;
+    width: 100% !important;
+    overflow: hidden;
+  }
+
+  div.content iframe,
+  div.content embed,
+  div.content object {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Mobile responsive adjustments */
+  @media only screen and (max-width: 600px) {
+    div.content table {
+      font-size: 12px;
+    }
+    
+    div.content table th,
+    div.content table td {
+      padding: 4px 6px;
+    }
+    
+    div.content .bluesky-embed {
+      font-size: 14px;
+    }
   }
 
 
