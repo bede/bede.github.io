@@ -15,13 +15,15 @@ I was initially underwhelmed by `--long`'s modest reduction of  the 661k dataset
 
 
 
+**661k, single FASTA file**
 
-| File                        | Line length  | Size (GiB) | Compression ratio |
-| --------------------------- | ------------ | ---------- | ----------------- |
-| `661k.fasta` (uncompressed) | 60 (default) | 2460       | -                 |
-| Gzip (pigz)                 | 60 (default) | 751        | 3.3               |
-| Zstandard                        | 60 (default) | 777        | 3.2               |
-| Zstandard `--long`               | 60 (default) | 641        | 3.8               |
+
+| Compression              | Line length  | Size (GiB) | Compression ratio |
+| :-------------------------- | ------------ | ---------- | ----------------- |
+| Uncompressed | 60 | 2460       | -                 |
+| Gzip (pigz)                 | 60 | 751        | 3.3               |
+| Zstandard                        | 60 | 777        | 3.2               |
+| Zstandard `--long`               | 60 | 641        | 3.8               |
 | Zstandard `--long`               | 0 (infinite) | 232        | 11                |
 | Zstandard `--long=31`            | 0 (infinite) | 80         | 31                |
 
