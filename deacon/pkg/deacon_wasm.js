@@ -1,4 +1,84 @@
-/* @ts-self-types="./deacon_web.d.ts" */
+/* @ts-self-types="./deacon_wasm.d.ts" */
+
+export class WasmFilterSession {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        WasmFilterSessionFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_wasmfiltersession_free(ptr, 0);
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    finish() {
+        const ret = wasm.wasmfiltersession_finish(this.__wbg_ptr);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @param {WasmIndex} index
+     * @param {boolean} deplete
+     * @param {number} abs_threshold
+     * @param {number} rel_threshold
+     * @param {boolean} decompress_input
+     * @param {boolean} compress_output
+     */
+    constructor(index, deplete, abs_threshold, rel_threshold, decompress_input, compress_output) {
+        _assertClass(index, WasmIndex);
+        const ret = wasm.wasmfiltersession_new(index.__wbg_ptr, deplete, abs_threshold, rel_threshold, decompress_input, compress_output);
+        this.__wbg_ptr = ret >>> 0;
+        WasmFilterSessionFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {boolean}
+     */
+    output_compressed() {
+        const ret = wasm.wasmfiltersession_output_compressed(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * @returns {number}
+     */
+    pending_bytes() {
+        const ret = wasm.wasmfiltersession_pending_bytes(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @param {Uint8Array} chunk
+     * @returns {Uint8Array}
+     */
+    push_chunk(chunk) {
+        const ptr0 = passArray8ToWasm0(chunk, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmfiltersession_push_chunk(this.__wbg_ptr, ptr0, len0);
+        if (ret[3]) {
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v2;
+    }
+    /**
+     * @returns {any}
+     */
+    stats() {
+        const ret = wasm.wasmfiltersession_stats(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+}
+if (Symbol.dispose) WasmFilterSession.prototype[Symbol.dispose] = WasmFilterSession.prototype.free;
 
 export class WasmIndex {
     __destroy_into_raw() {
@@ -43,50 +123,10 @@ export class WasmIndex {
 }
 if (Symbol.dispose) WasmIndex.prototype[Symbol.dispose] = WasmIndex.prototype.free;
 
-/**
- * @param {WasmIndex} index
- * @param {Uint8Array} input
- * @param {boolean} deplete
- * @param {number} abs_threshold
- * @param {number} rel_threshold
- * @returns {Uint8Array}
- */
-export function filter(index, input, deplete, abs_threshold, rel_threshold) {
-    _assertClass(index, WasmIndex);
-    const ptr0 = passArray8ToWasm0(input, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.filter(index.__wbg_ptr, ptr0, len0, deplete, abs_threshold, rel_threshold);
-    if (ret[3]) {
-        throw takeFromExternrefTable0(ret[2]);
-    }
-    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-    return v2;
-}
-
-/**
- * @param {WasmIndex} index
- * @param {Uint8Array} input
- * @param {boolean} deplete
- * @param {number} abs_threshold
- * @param {number} rel_threshold
- * @returns {any}
- */
-export function filter_with_stats(index, input, deplete, abs_threshold, rel_threshold) {
-    _assertClass(index, WasmIndex);
-    const ptr0 = passArray8ToWasm0(input, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.filter_with_stats(index.__wbg_ptr, ptr0, len0, deplete, abs_threshold, rel_threshold);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-}
-
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
-        __wbg___wbindgen_throw_39bc967c0e5a9b58: function(arg0, arg1) {
+        __wbg___wbindgen_throw_6ddd609b62940d55: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
         __wbg_error_a6fa202b58aa1cd3: function(arg0, arg1) {
@@ -104,15 +144,11 @@ function __wbg_get_imports() {
             const ret = new Error();
             return ret;
         },
-        __wbg_new_ed69e637b553a997: function() {
+        __wbg_new_ab79df5bd7c26067: function() {
             const ret = new Object();
             return ret;
         },
-        __wbg_new_from_slice_d7e202fdbee3c396: function(arg0, arg1) {
-            const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
-            return ret;
-        },
-        __wbg_set_bad5c505cc70b5f8: function() { return handleError(function (arg0, arg1, arg2) {
+        __wbg_set_7eaa4f96924fd6b3: function() { return handleError(function (arg0, arg1, arg2) {
             const ret = Reflect.set(arg0, arg1, arg2);
             return ret;
         }, arguments); },
@@ -145,10 +181,13 @@ function __wbg_get_imports() {
     };
     return {
         __proto__: null,
-        "./deacon_web_bg.js": import0,
+        "./deacon_wasm_bg.js": import0,
     };
 }
 
+const WasmFilterSessionFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_wasmfiltersession_free(ptr >>> 0, 1));
 const WasmIndexFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wasmindex_free(ptr >>> 0, 1));
@@ -357,7 +396,7 @@ async function __wbg_init(module_or_path) {
     }
 
     if (module_or_path === undefined) {
-        module_or_path = new URL('deacon_web_bg.wasm', import.meta.url);
+        module_or_path = new URL('deacon_wasm_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 
