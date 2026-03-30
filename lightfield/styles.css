@@ -63,8 +63,8 @@ h2 {
 
 .tab-button.active {
   color: #fff;
-  background: #4a90d9;
-  border-color: #4a90d9;
+  background: #713da7;
+  border-color: #713da7;
 }
 
 .tab-panel {
@@ -107,13 +107,16 @@ h2 {
   cursor: pointer;
   background: #fff;
   border: 2px dashed #aaa;
-  transition: all 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .drop-zone:hover,
 .drop-zone.dragover {
-  background: #f0f7ff;
-  border-color: #4a90d9;
+  background: #f6effd;
+  border-color: #713da7;
+  transition-duration: 0s;
 }
 
 .drop-zone.loaded {
@@ -166,15 +169,187 @@ h2 {
 
 .controls label {
   display: flex;
-  gap: 0.35rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.45rem;
+  align-items: flex-start;
   font-size: 0.85rem;
 }
 
+.field-heading {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.field-label {
+  text-decoration: none;
+}
+
+.field-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.field-help-button,
+.field-help-button:hover:not(:disabled) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  color: #713da7;
+  background: transparent;
+  border: 1px solid rgba(113, 61, 167, 0.45);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.field-help-button:focus-visible {
+  outline: 2px solid rgba(113, 61, 167, 0.35);
+  outline-offset: 2px;
+}
+
+.field-description {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  width: min(20rem, calc(100vw - 3rem));
+  padding: 0.7rem 0.8rem;
+  color: #333;
+  background: #fff;
+  border: 1px solid rgba(113, 61, 167, 0.22);
+  box-shadow: 0 10px 24px rgba(33, 37, 41, 0.12);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(0.2rem);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.field-help:hover .field-description,
+.field-help:focus-within .field-description {
+  opacity: 1;
+  transform: translateY(0);
+  transition-duration: 0s;
+}
+
 .controls input[type="number"] {
-  width: 6rem;
-  padding: 0.25rem 0.4rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
   border: 1px solid #ccc;
+  border-radius: 0.1rem;
+}
+
+.parameters-shell {
+  margin-bottom: 1rem;
+  border: 1px solid #ddd;
+  background: #fafafa;
+}
+
+.parameters-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: calc(0.6rem - 1px) 1.3rem;
+  color: #333;
+  background: transparent;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+
+.parameters-toggle:hover:not(:disabled) {
+  background: #f6effd;
+  transition-duration: 0s;
+}
+
+.parameters-toggle::after {
+  content: "▾";
+  margin-left: auto;
+  font-size: 1.55rem;
+  line-height: 1;
+  transition: transform 0.24s ease;
+}
+
+.parameters-toggle[aria-expanded="true"]::after {
+  transform: rotate(180deg);
+}
+
+.parameters-toggle-copy {
+  color: #777;
+  font-weight: 400;
+}
+
+.parameters-panel {
+  max-height: 0;
+  overflow: hidden;
+  transition:
+    max-height 0.32s ease,
+    opacity 0.32s ease,
+    border-top-color 0.32s ease;
+  opacity: 0;
+  border-top: 1px solid transparent;
+}
+
+.parameters-panel.open {
+  max-height: 32rem;
+  overflow: visible;
+  opacity: 1;
+  border-top-color: #ddd;
+}
+
+.parameters-panel > .controls {
+  margin-bottom: 0;
+  padding: 1rem;
+}
+
+.parameters-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.controls label.checkbox-control {
+  display: inline-flex;
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  justify-self: start;
+  gap: 0.7rem;
+  padding-top: 0.2rem;
+}
+
+.controls label.checkbox-control input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.checkbox-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.checkbox-title {
+  line-height: 1.2;
+}
+
+.controls label.checkbox-control span {
+  line-height: 1.2;
 }
 
 .actions,
@@ -187,15 +362,16 @@ h2 {
 button {
   padding: 0.6rem 1.3rem;
   color: #fff;
-  background: #4a90d9;
+  background: #936dd0;
   border: none;
   cursor: pointer;
   font-size: 0.95rem;
-  transition: background 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 button:hover:not(:disabled) {
-  background: #3a7bc8;
+  background: #835dc1;
+  transition-duration: 0s;
 }
 
 button:disabled {
@@ -209,6 +385,7 @@ button:disabled {
 
 .button-secondary:hover:not(:disabled) {
   background: #5b636a;
+  transition-duration: 0s;
 }
 
 .status {
@@ -318,6 +495,7 @@ textarea {
 @media (max-width: 860px) {
   .upload-grid,
   .upload-grid-many,
+  .parameters-grid,
   .output-grid {
     grid-template-columns: 1fr;
   }
@@ -339,5 +517,23 @@ textarea {
 
   .summary {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .field-description {
+    position: static;
+    width: min(22rem, calc(100vw - 4rem));
+    margin-top: 0.45rem;
+  }
+
+  .parameters-toggle {
+    align-items: flex-start;
+  }
+
+  .parameters-toggle-copy {
+    display: none;
+  }
+
+  .checkbox-control {
+    padding-top: 0;
   }
 }

@@ -1,13 +1,20 @@
 const textEncoder = new TextEncoder();
-const DEFAULT_MIN_AMBIG_FREQ = 0.2;
-const DEFAULT_MIN_AMBIG_DEPTH = 10;
-const DEFAULT_MIN_VAR_FREQ = 0.8;
-const DEFAULT_IUPAC = false;
 const MAX_BATCH_WORKERS = 8;
+const DEFAULT_OPTIONS = {
+  minDepth: 20,
+  minAmbigFreq: 0.2,
+  minAmbigDepth: 10,
+  minVarFreq: 0.8,
+  iupac: false,
+  kmerSize: 11,
+  normaliseDepth: 1000,
+};
 
 const els = {
   form: document.querySelector("#run-form"),
   status: document.querySelector("#status"),
+  parametersToggle: document.querySelector("#parameters-toggle"),
+  parametersPanel: document.querySelector("#parameters-panel"),
   readsField: {
     zone: document.querySelector("#reads-zone"),
     fileInput: document.querySelector("#reads-file"),
@@ -32,6 +39,11 @@ const els = {
     meta: document.querySelector("#sheet-meta"),
   },
   minDepth: document.querySelector("#min-depth"),
+  minAmbigFreq: document.querySelector("#min-ambig-freq"),
+  minAmbigDepth: document.querySelector("#min-ambig-depth"),
+  minVarFreq: document.querySelector("#min-var-freq"),
+  iupac: document.querySelector("#iupac"),
+  kmerSize: document.querySelector("#kmer-size"),
   normaliseDepth: document.querySelector("#normalise-depth"),
   runButton: document.querySelector("#run-button"),
   resetButton: document.querySelector("#reset-button"),
@@ -221,17 +233,42 @@ async function mergeByteArrays(chunks) {
 function getOptions() {
   return {
     minDepth: Number(els.minDepth.value),
-    minAmbigFreq: DEFAULT_MIN_AMBIG_FREQ,
-    minAmbigDepth: DEFAULT_MIN_AMBIG_DEPTH,
-    minVarFreq: DEFAULT_MIN_VAR_FREQ,
-    iupac: DEFAULT_IUPAC,
+    minAmbigFreq: Number(els.minAmbigFreq.value),
+    minAmbigDepth: Number(els.minAmbigDepth.value),
+    minVarFreq: Number(els.minVarFreq.value),
+    iupac: els.iupac.checked,
+    kmerSize: Number(els.kmerSize.value),
     normaliseDepth: Number(els.normaliseDepth.value),
   };
 }
 
 function validateOptions(options) {
+  if (!Number.isInteger(options.minDepth) || options.minDepth < 1) {
+    throw new Error("Min depth must be a whole number greater than or equal to 1.");
+  }
+
+  if (!Number.isFinite(options.minAmbigFreq) || options.minAmbigFreq < 0 || options.minAmbigFreq > 1) {
+    throw new Error("Min ambig freq must be between 0 and 1.");
+  }
+
+  if (!Number.isInteger(options.minAmbigDepth) || options.minAmbigDepth < 1) {
+    throw new Error("Min ambig depth must be a whole number greater than or equal to 1.");
+  }
+
+  if (!Number.isFinite(options.minVarFreq) || options.minVarFreq < 0 || options.minVarFreq > 1) {
+    throw new Error("Min var freq must be between 0 and 1.");
+  }
+
   if (!(options.minVarFreq > options.minAmbigFreq)) {
     throw new Error("Min var freq must be greater than min ambig freq.");
+  }
+
+  if (!Number.isInteger(options.kmerSize) || options.kmerSize < 1) {
+    throw new Error("K-mer size must be a whole number greater than or equal to 1.");
+  }
+
+  if (!Number.isInteger(options.normaliseDepth) || options.normaliseDepth < 0) {
+    throw new Error("Normalise depth must be a whole number greater than or equal to 0.");
   }
 }
 
@@ -359,6 +396,7 @@ async function runBatchOnMainThread(samples, reference, primerBed, options) {
         options.minAmbigDepth,
         options.minVarFreq,
         options.iupac,
+        options.kmerSize,
         options.normaliseDepth,
       ),
     );
@@ -791,7 +829,7 @@ function renderManyResults(results) {
     const downloadsCell = row.lastElementChild;
     const fastaButton = document.createElement("button");
     fastaButton.type = "button";
-    fastaButton.className = "table-button";
+    fastaButton.className = "table-button button-secondary";
     fastaButton.textContent = "FASTA";
     fastaButton.addEventListener("click", () => {
       downloadText(`${result.sample_name}.consensus.fasta`, result.consensus_fasta);
@@ -799,7 +837,7 @@ function renderManyResults(results) {
 
     const vcfButton = document.createElement("button");
     vcfButton.type = "button";
-    vcfButton.className = "table-button";
+    vcfButton.className = "table-button button-secondary";
     vcfButton.textContent = "VCF";
     vcfButton.addEventListener("click", () => {
       downloadText(`${result.sample_name}.vcf`, result.vcf);
@@ -919,6 +957,7 @@ function renderResults(results) {
 
     const fastaButton = document.createElement("button");
     fastaButton.type = "button";
+    fastaButton.className = "button-secondary";
     fastaButton.textContent = "Download FASTA";
     fastaButton.addEventListener("click", () => {
       downloadText(`${result.sample_name}.consensus.fasta`, result.consensus_fasta);
@@ -926,6 +965,7 @@ function renderResults(results) {
 
     const vcfButton = document.createElement("button");
     vcfButton.type = "button";
+    vcfButton.className = "button-secondary";
     vcfButton.textContent = "Download VCF";
     vcfButton.addEventListener("click", () => {
       downloadText(`${result.sample_name}.vcf`, result.vcf);
@@ -971,13 +1011,29 @@ function renderResults(results) {
   renderManyResults(results);
 }
 
+function applyOptionsToFields(options) {
+  els.minDepth.value = String(options.minDepth);
+  els.minAmbigFreq.value = String(options.minAmbigFreq);
+  els.minAmbigDepth.value = String(options.minAmbigDepth);
+  els.minVarFreq.value = String(options.minVarFreq);
+  els.iupac.checked = options.iupac;
+  els.kmerSize.value = String(options.kmerSize);
+  els.normaliseDepth.value = String(options.normaliseDepth);
+}
+
+function setParametersPanelOpen(open) {
+  els.parametersToggle.setAttribute("aria-expanded", String(open));
+  els.parametersPanel.classList.toggle("open", open);
+  els.parametersPanel.setAttribute("aria-hidden", String(!open));
+  els.parametersPanel.inert = !open;
+}
+
 function resetState() {
   els.readsField.fileInput.value = "";
   els.readsField.dirInput.value = "";
   els.schemeField.input.value = "";
   els.sheetField.input.value = "";
-  els.minDepth.value = "20";
-  els.normaliseDepth.value = "1000";
+  applyOptionsToFields(DEFAULT_OPTIONS);
   state.reads = null;
   state.primerScheme = null;
   state.sampleSheetFile = null;
@@ -1054,6 +1110,23 @@ els.schemeField.button.addEventListener("click", () => {
 
 els.sheetField.button.addEventListener("click", () => {
   els.sheetField.input.click();
+});
+
+document.querySelectorAll(".field-help-button").forEach((button) => {
+  button.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (document.activeElement === button) {
+      button.blur();
+    } else {
+      button.focus();
+    }
+  });
 });
 
 els.readsField.fileInput.addEventListener("change", () => {
@@ -1141,6 +1214,11 @@ els.resetButton.addEventListener("click", () => {
   resetState();
 });
 
+els.parametersToggle.addEventListener("click", () => {
+  const isOpen = els.parametersToggle.getAttribute("aria-expanded") === "true";
+  setParametersPanelOpen(!isOpen);
+});
+
 const wasmReady = loadWasmModule()
   .then((run) => {
     runLightfield = run;
@@ -1199,6 +1277,7 @@ els.form.addEventListener("submit", async (event) => {
           options.minAmbigDepth,
           options.minVarFreq,
           options.iupac,
+          options.kmerSize,
           options.normaliseDepth,
         ),
       ];
@@ -1228,6 +1307,8 @@ els.form.addEventListener("submit", async (event) => {
 });
 
 clearResults();
+applyOptionsToFields(DEFAULT_OPTIONS);
+setParametersPanelOpen(false);
 syncReadsField();
 syncSchemeField();
 syncSheetField();

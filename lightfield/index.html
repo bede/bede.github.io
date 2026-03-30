@@ -66,9 +66,152 @@
           </div>
         </div>
 
-        <div class="controls">
-          <label>Min depth <input id="min-depth" type="number" min="1" value="20" /></label>
-          <label>Normalise depth <input id="normalise-depth" type="number" min="0" value="1000" /></label>
+        <div class="parameters-shell">
+          <button
+            id="parameters-toggle"
+            class="parameters-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="parameters-panel"
+          >
+            <span>Parameters</span>
+          </button>
+
+          <div id="parameters-panel" class="parameters-panel" aria-hidden="true">
+            <div class="controls parameters-grid">
+              <label>
+                <span class="field-heading">
+                  <span class="field-label">Minimum read depth</span>
+                  <span class="field-help">
+                    <button
+                      class="field-help-button"
+                      type="button"
+                      aria-label="Explain minimum read depth"
+                    >
+                      ?
+                    </button>
+                    <span class="field-description">
+                      Minimum read depth for consensus and variant calling. Positions below this depth
+                      become N.
+                    </span>
+                  </span>
+                </span>
+                <input id="min-depth" type="number" min="1" step="1" value="20" />
+              </label>
+              <label>
+                <span class="field-heading">
+                  <span class="field-label">Normalise depth</span>
+                  <span class="field-help">
+                    <button
+                      class="field-help-button"
+                      type="button"
+                      aria-label="Explain normalise depth"
+                    >
+                      ?
+                    </button>
+                    <span class="field-description">
+                      Target depth for per-amplicon coverage normalisation. Set to 0 to disable
+                      normalisation.
+                    </span>
+                  </span>
+                </span>
+                <input id="normalise-depth" type="number" min="0" step="1" value="1000" />
+              </label>
+              <label>
+                <span class="field-heading">
+                  <span class="field-label">Seed k-mer size</span>
+                  <span class="field-help">
+                    <button
+                      class="field-help-button"
+                      type="button"
+                      aria-label="Explain seed k-mer size"
+                    >
+                      ?
+                    </button>
+                    <span class="field-description">
+                      K-mer length used for alignment seeding.
+                    </span>
+                  </span>
+                </span>
+                <input id="kmer-size" type="number" min="1" step="1" value="11" />
+              </label>
+              <label>
+                <span class="field-heading">
+                  <span class="field-label">Minimum ambiguity frequency</span>
+                  <span class="field-help">
+                    <button
+                      class="field-help-button"
+                      type="button"
+                      aria-label="Explain minimum ambiguity frequency"
+                    >
+                      ?
+                    </button>
+                    <span class="field-description">
+                      Minimum allele frequency required for ambiguity calling.
+                    </span>
+                  </span>
+                </span>
+                <input id="min-ambig-freq" type="number" min="0" max="1" step="0.01" value="0.2" />
+              </label>
+              <label>
+                <span class="field-heading">
+                  <span class="field-label">Minimum ambiguity depth</span>
+                  <span class="field-help">
+                    <button
+                      class="field-help-button"
+                      type="button"
+                      aria-label="Explain minimum ambiguity depth"
+                    >
+                      ?
+                    </button>
+                    <span class="field-description">
+                      Minimum read depth required for ambiguity calling.
+                    </span>
+                  </span>
+                </span>
+                <input id="min-ambig-depth" type="number" min="1" step="1" value="10" />
+              </label>
+              <label>
+                <span class="field-heading">
+                  <span class="field-label">Minimum variant frequency</span>
+                  <span class="field-help">
+                    <button
+                      class="field-help-button"
+                      type="button"
+                      aria-label="Explain minimum variant frequency"
+                    >
+                      ?
+                    </button>
+                    <span class="field-description">
+                      Minimum allele frequency required for variant calling.
+                    </span>
+                  </span>
+                </span>
+                <input id="min-var-freq" type="number" min="0" max="1" step="0.01" value="0.8" />
+              </label>
+              <label class="checkbox-control">
+                <input id="iupac" type="checkbox" />
+                <span class="checkbox-copy">
+                  <span class="field-heading">
+                    <span class="checkbox-title">Use mixed-base IUPAC codes instead of N</span>
+                    <span class="field-help">
+                      <button
+                        class="field-help-button"
+                        type="button"
+                        aria-label="Explain IUPAC mixed-base codes"
+                      >
+                        ?
+                      </button>
+                      <span class="field-description">
+                        Emits M=A/C, R=A/G, W=A/T, S=C/G, Y=C/T, or K=G/T for ambiguous consensus
+                        calls that pass the ambiguity thresholds.
+                      </span>
+                    </span>
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
         </div>
 
         <div class="actions">

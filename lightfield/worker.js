@@ -100,6 +100,7 @@ self.addEventListener("message", async (event) => {
         options.minAmbigDepth,
         options.minVarFreq,
         options.iupac,
+        options.kmerSize,
         options.normaliseDepth,
       );
 
