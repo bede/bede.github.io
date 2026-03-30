@@ -6,11 +6,14 @@
  * @param {Uint8Array} reference_fasta
  * @param {string} primer_bed
  * @param {number} min_depth
- * @param {number} min_freq
+ * @param {number} min_ambig_freq
+ * @param {number} min_ambig_depth
+ * @param {number} min_var_freq
+ * @param {boolean} iupac
  * @param {number} normalise_depth
  * @returns {any}
  */
-export function run_lightfield(sample_name, reads_fastx, reference_fasta, primer_bed, min_depth, min_freq, normalise_depth) {
+export function run_lightfield(sample_name, reads_fastx, reference_fasta, primer_bed, min_depth, min_ambig_freq, min_ambig_depth, min_var_freq, iupac, normalise_depth) {
     const ptr0 = passStringToWasm0(sample_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArray8ToWasm0(reads_fastx, wasm.__wbindgen_malloc);
@@ -19,7 +22,7 @@ export function run_lightfield(sample_name, reads_fastx, reference_fasta, primer
     const len2 = WASM_VECTOR_LEN;
     const ptr3 = passStringToWasm0(primer_bed, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len3 = WASM_VECTOR_LEN;
-    const ret = wasm.run_lightfield(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, min_depth, min_freq, normalise_depth);
+    const ret = wasm.run_lightfield(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, min_depth, min_ambig_freq, min_ambig_depth, min_var_freq, iupac, normalise_depth);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
