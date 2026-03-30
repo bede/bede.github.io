@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>lightfield</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;700&family=Roboto+Flex:opsz@8..144&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <h1>
+          lightfield
+          <span class="alpha-tag">alpha</span>
+        </h1>
+        <p class="subtitle">
+          Tiled amplicon consensus assembly and variant calling in the browser. To begin, drop a fastq file
+          and a primer scheme directory containing reference.fasta &amp; primer.bed. Alternatively select a directory of directories of FASTQ files (e.g. fastq_pass). Optionally add a sample sheet to map directory names to samples.
+        </p>
+      </header>
+
+      <form id="run-form" class="panel-form">
+        <div class="upload-grid upload-grid-many">
+          <div class="drop-zone" id="reads-zone">
+            <input
+              id="reads-file"
+              type="file"
+              accept=".gz,.fastq.gz,.fq.gz,.fastq,.fq,.fasta,.fa,.fasta.gz,.fa.gz,application/gzip"
+            />
+            <input id="reads-dir" type="file" webkitdirectory directory multiple />
+            <div class="drop-label">Drop reads (fastq) file or directory</div>
+            <div class="drop-actions">
+              <button id="reads-file-button" type="button" class="button-secondary">Select file</button>
+              <button id="reads-dir-button" type="button" class="button-secondary">Select directory</button>
+            </div>
+            <div class="filename" id="reads-name"></div>
+            <div class="meta" id="reads-meta"></div>
+          </div>
+
+          <div class="drop-zone" id="scheme-zone">
+            <input id="scheme" type="file" webkitdirectory directory multiple />
+            <div class="drop-label">Drop primer scheme directory</div>
+            <div class="drop-actions">
+              <button id="scheme-button" type="button" class="button-secondary">Select directory</button>
+            </div>
+            <div class="helper">Containing reference.fasta &amp; primer.bed</div>
+            <div class="filename" id="scheme-name"></div>
+            <div class="meta" id="scheme-meta"></div>
+          </div>
+
+          <div class="drop-zone" id="sheet-zone">
+            <input id="sheet" type="file" accept=".csv,text/csv" />
+            <div class="drop-label">Optional sample sheet CSV</div>
+            <div class="drop-actions">
+              <button id="sheet-button" type="button" class="button-secondary">Select file</button>
+            </div>
+            <div class="helper">Mapping reads to sample names</div>
+            <div class="filename" id="sheet-name"></div>
+            <div class="meta" id="sheet-meta"></div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <label>Min depth <input id="min-depth" type="number" min="1" value="20" /></label>
+          <label>Normalise depth <input id="normalise-depth" type="number" min="0" value="1000" /></label>
+        </div>
+
+        <div class="actions">
+          <button id="run-button" type="submit">Run</button>
+          <button id="reset-button" type="button" class="button-secondary">Reset</button>
+        </div>
+      </form>
+
+      <div id="status" class="status">Loading wasm module…</div>
+
+      <section id="summary-panel" class="card" hidden>
+        <div class="summary-head">
+          <h2>Run summary</h2>
+          <div class="downloads" id="downloads"></div>
+        </div>
+        <dl id="summary" class="summary"></dl>
+        <div class="table-wrap" id="results-wrap" hidden>
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>Sample</th>
+                <th>Reads</th>
+                <th>Mapped</th>
+                <th>Coverage</th>
+                <th>Variants</th>
+                <th>Downloads</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./index.js"></script>
+  </body>
+</html>
