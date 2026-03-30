@@ -241,7 +241,7 @@ function determineBatchWorkerCount(sampleCount) {
 }
 
 function buildBatchProgressMessage(completed, total, workerCount) {
-  return `Running ${completed}/${total} sample(s) with ${workerCount} worker${workerCount === 1 ? "" : "s"}…`;
+  return `Processed ${completed}/${total} sample(s) with ${workerCount} worker${workerCount === 1 ? "" : "s"}…`;
 }
 
 function createBatchWorker(referenceBytes, primerBed, options, buildId) {
@@ -1144,7 +1144,10 @@ els.resetButton.addEventListener("click", () => {
 const wasmReady = loadWasmModule()
   .then((run) => {
     runLightfield = run;
-    setStatus(wasmBuildId ? `Ready (${wasmBuildId})` : "Ready");
+    if (wasmBuildId) {
+      console.log(`Wasm ready: ${wasmBuildId}`);
+    }
+    setStatus("Ready");
   })
   .catch((error) => {
     console.error(error);
@@ -1183,7 +1186,7 @@ els.form.addEventListener("submit", async (event) => {
     let results;
 
     if (state.reads.mode === "single") {
-      setStatus("Running sample…");
+      setStatus("Processing sample…");
       const reads = await readBytes(state.reads.file);
       results = [
         runLightfield(
