@@ -50,6 +50,7 @@ const state = {
 };
 
 let runLightfield = null;
+let wasmBuildId = null;
 
 function setStatus(message, isError = false) {
   els.status.textContent = message;
@@ -72,6 +73,29 @@ function formatCount(value) {
 
 function describeError(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function loadBuildInfo() {
+  const buildInfoUrl = new URL("./build-info.json", import.meta.url);
+  buildInfoUrl.searchParams.set("ts", String(Date.now()));
+
+  try {
+    const response = await fetch(buildInfoUrl, { cache: "no-store" });
+    if (!response.ok) {
+      return null;
+    }
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function versionedModuleUrl(modulePath, buildId) {
+  const url = new URL(modulePath, import.meta.url);
+  if (buildId) {
+    url.searchParams.set("v", buildId);
+  }
+  return url.href;
 }
 
 function pathParts(path) {
@@ -220,13 +244,17 @@ function buildBatchProgressMessage(completed, total, workerCount) {
   return `Running ${completed}/${total} sample(s) with ${workerCount} worker${workerCount === 1 ? "" : "s"}…`;
 }
 
-function createBatchWorker(referenceBytes, primerBed, options) {
+function createBatchWorker(referenceBytes, primerBed, options, buildId) {
   return new Promise((resolve, reject) => {
     let ready = false;
     let closed = false;
     let nextRequestId = 1;
     const pending = new Map();
-    const worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
+    const workerUrl = new URL("./worker.js", import.meta.url);
+    if (buildId) {
+      workerUrl.searchParams.set("v", buildId);
+    }
+    const worker = new Worker(workerUrl, { type: "module" });
 
     const rejectPending = (error) => {
       for (const request of pending.values()) {
@@ -354,7 +382,7 @@ async function runBatchWithWorkers(samples, reference, primerBed, options) {
   const workers = [];
   try {
     for (let index = 0; index < workerCount; index += 1) {
-      workers.push(await createBatchWorker(reference, primerBed, options));
+      workers.push(await createBatchWorker(reference, primerBed, options, wasmBuildId));
     }
   } catch (error) {
     for (const workerHandle of workers) {
@@ -392,6 +420,8 @@ async function runBatchWithWorkers(samples, reference, primerBed, options) {
 }
 
 async function loadWasmModule() {
+  const buildInfo = await loadBuildInfo();
+  wasmBuildId = typeof buildInfo?.build_id === "string" ? buildInfo.build_id : null;
   const candidates = [
     { path: "./pkg/lightfield_wasm.js", exportName: "run_lightfield" },
     { path: "./pkg/lightfield_wasm.js", exportName: "run_lightfield", legacy: true },
@@ -401,7 +431,8 @@ async function loadWasmModule() {
 
   for (const candidate of candidates) {
     try {
-      const wasmModule = await import(candidate.path);
+      const moduleUrl = versionedModuleUrl(candidate.path, wasmBuildId);
+      const wasmModule = await import(moduleUrl);
       const init = wasmModule.default;
       const run = wasmModule[candidate.exportName];
 
@@ -1113,7 +1144,7 @@ els.resetButton.addEventListener("click", () => {
 const wasmReady = loadWasmModule()
   .then((run) => {
     runLightfield = run;
-    setStatus("Ready");
+    setStatus(wasmBuildId ? `Ready (${wasmBuildId})` : "Ready");
   })
   .catch((error) => {
     console.error(error);

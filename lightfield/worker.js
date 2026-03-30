@@ -1,6 +1,5 @@
-import init, { run_lightfield as runLightfield } from "./pkg/lightfield_wasm.js";
-
 const workerState = {
+  bindingsPromise: null,
   initPromise: null,
   referenceBytes: null,
   primerBed: "",
@@ -27,9 +26,27 @@ function toUint8Array(value) {
   throw new Error("Expected bytes for worker initialization.");
 }
 
+async function loadBindings() {
+  if (!workerState.bindingsPromise) {
+    const workerUrl = new URL(self.location.href);
+    const moduleUrl = new URL("./pkg/lightfield_wasm.js", workerUrl);
+    const buildId = workerUrl.searchParams.get("v");
+    if (buildId) {
+      moduleUrl.searchParams.set("v", buildId);
+    }
+
+    workerState.bindingsPromise = import(moduleUrl.href).then((module) => ({
+      init: module.default,
+      runLightfield: module.run_lightfield,
+    }));
+  }
+
+  return workerState.bindingsPromise;
+}
+
 function ensureInitialized() {
   if (!workerState.initPromise) {
-    workerState.initPromise = init();
+    workerState.initPromise = loadBindings().then(({ init }) => init());
   }
   return workerState.initPromise;
 }
@@ -71,6 +88,7 @@ self.addEventListener("message", async (event) => {
       }
 
       const options = workerState.options;
+      const { runLightfield } = await loadBindings();
       const readsBytes = await mergeFiles(message.files || []);
       const result = runLightfield(
         message.sampleName,
