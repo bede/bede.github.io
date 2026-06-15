@@ -16,8 +16,10 @@ import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=20260615-1
 //   - `region` is a dummy value the gateway ignores but the SDK requires,
 //   - `forcePathStyle` is required (RGW does not do virtual-host-style buckets).
 const ENDPOINT = "https://s3.climb.ac.uk";
-const BUCKET = "quick-research-bede-upload-test";
+const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
+
+console.log(`updeacon: bucket "${BUCKET}" at ${ENDPOINT}`);
 
 const ASSET_VERSION = "20260615-1";
 
@@ -414,7 +416,6 @@ async function uploadAll() {
   );
   if (!items.length) return;
 
-  console.log(`updeacon: bucket "${BUCKET}" at ${ENDPOINT}`);
   console.log("updeacon: deacon filter params", {
     index: indexFilename,
     k: indexK,
