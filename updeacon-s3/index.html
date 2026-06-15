@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>updeacon-s3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&family=Roboto+Flex:opsz@8..144&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Roboto Flex', system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; padding: 2rem; max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  .alpha-tag { color: #713da7; font-size: 0.5em; font-weight: 400; vertical-align: super; }
+  .subtitle { color: #666; margin-bottom: 0.75rem; font-size: 0.9rem; }
+  .usage { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; }
+  .usage ol { margin: 0.3rem 0 0; padding-left: 1.4rem; }
+  .usage li { margin-bottom: 0.25rem; }
+  .field { margin-bottom: 1rem; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+  .field-row .field { margin-bottom: 1rem; }
+  .field label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; }
+  .field input { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #ccc; font-family: 'Roboto Mono', monospace; font-size: 0.9rem; }
+  .field input:focus { outline: none; border-color: #713da7; }
+  .name-input { display: flex; align-items: center; border: 1px solid #ccc; background: #fff; font-family: 'Roboto Mono', monospace; font-size: 0.9rem; }
+  .name-input:focus-within { border-color: #713da7; }
+  .name-input .name-prefix { color: #999; white-space: nowrap; user-select: none; padding: 0.5rem 0 0.5rem 0.6rem; }
+  .name-input input { flex: 1; min-width: 0; width: auto; border: none; padding: 0.5rem 0.6rem 0.5rem 0; font: inherit; background: transparent; }
+  .name-input input:focus { outline: none; }
+  .drop-zone { border: 2px dashed #aaa; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #fff; margin-bottom: 1rem; }
+  .drop-zone:hover, .drop-zone.dragover { border-color: #713da7; background: #f6effd; }
+  .drop-zone.loaded { border-color: #4caf50; background: #f0fff0; }
+  .drop-zone input { display: none; }
+  .drop-zone .label { font-size: 0.95rem; color: #555; }
+  .drop-zone .summary { font-weight: 600; color: #333; margin-top: 0.5rem; }
+  .drop-zone .summary:empty { display: none; }
+  .drop-zone .filename { font-weight: 600; color: #333; margin-top: 0.5rem; }
+  .drop-zone .filename:empty { display: none; }
+  .drop-zone .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
+  .drop-zone .idx-info:empty { display: none; }
+  .actions { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.4rem; }
+  button { background: #936dd0; color: #fff; border: none; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: background 0.2s; }
+  button:hover:not(:disabled) { background: #835dc1; }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  #reset-btn { background: #6c757d; }
+  #reset-btn:hover:not(:disabled) { background: #5b636a; }
+  .progress-wrap { margin-top: 1rem; }
+  progress { width: 100%; height: 0.55rem; appearance: none; -webkit-appearance: none; accent-color: #6c757d; border: none; background: #eee; }
+  progress[value]::-webkit-progress-bar { background: #eee; }
+  progress[value]::-webkit-progress-value { background: #6c757d; }
+  progress[value]::-moz-progress-bar { background: #6c757d; }
+  .progress-label { font-size: 0.85rem; color: #555; margin-top: 0.3rem; }
+  #file-list { list-style: none; margin-top: 0.6rem; font-family: 'Roboto Mono', monospace; font-size: 0.8rem; max-height: 14rem; overflow-y: auto; border: 1px solid #ddd; background: #fff; }
+  #file-list li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0.6rem; border-bottom: 1px solid #f0f0f0; }
+  #file-list li:last-child { border-bottom: none; }
+  #file-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #file-list .st { flex-shrink: 0; color: #888; }
+  #file-list li.done .st { color: #4caf50; }
+  #file-list li.active .st { color: #713da7; }
+  #file-list li.failed .st { color: #e74c3c; }
+  #status { margin-top: 1rem; padding: 0.8rem; background: #fff; font-size: 0.9rem; min-height: 2.5rem; border: 1px solid #ddd; white-space: pre-line; }
+  #status.error { border-color: #e74c3c; color: #e74c3c; }
+  #status.success { border-color: #4caf50; color: #4caf50; }
+  .info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
+  a { color: #333; text-decoration: underline; }
+  a:hover { color: #000; }
+</style>
+</head>
+<body>
+<h1>updeacon-s3 <span class="alpha-tag">alpha</span></h1>
+<p class="subtitle">Dehost and upload fasta/fastq file(s) to CLIMB S3 object storage.
+  Runs <a href="https://github.com/bede/deacon">Deacon</a> locally using WebAssembly to remove human sequences prior to upload.</p>
+<div class="usage">
+  <b>Usage</b>
+  <ol>
+    <li>Enter the <em>access key ID</em> and <em>secret access key</em> shown in the 'S3 Buckets' area of the CLIMB portal</li>
+    <li>Drag and drop a local copy of the <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61.idx">panhuman-1 Deacon index</a> (850&nbsp;MB)</li>
+    <li>Drag and drop the directory of sequences you wish to upload</li>
+    <li>Press upload and await completion</li>
+  </ol>
+</div>
+
+<div class="field-row">
+  <div class="field">
+    <label for="access-key">Access key ID</label>
+    <input type="text" id="access-key" name="access-key-id" autocomplete="on" spellcheck="false" placeholder="CLIMB S3 ID">
+  </div>
+  <div class="field">
+    <label for="secret-key">Secret access key</label>
+    <input type="password" id="secret-key" autocomplete="off" spellcheck="false" placeholder="CLIMB S3 secret">
+  </div>
+</div>
+
+<div class="field">
+  <label for="run-name">Upload name (optional)</label>
+  <div class="name-input">
+    <span class="name-prefix" id="name-prefix"></span>
+    <input type="text" id="run-name" autocomplete="off" spellcheck="false" placeholder="name">
+  </div>
+</div>
+
+<div class="drop-zone" id="index-zone">
+  <input type="file" id="index-input" accept=".idx">
+  <div class="label">Drop a Deacon index (.idx), or click to select</div>
+  <div class="filename" id="index-name"></div>
+  <div class="idx-info" id="index-info"></div>
+</div>
+
+<div class="drop-zone" id="dir-zone">
+  <input type="file" id="dir-input" webkitdirectory directory multiple>
+  <div class="label">Drop a directory of fasta/fastq[.gz] files, or click to select</div>
+  <div class="summary" id="dir-summary"></div>
+</div>
+
+<div class="actions">
+  <button id="upload-btn" disabled>Upload</button>
+  <button id="reset-btn" type="button">Reset</button>
+</div>
+
+<div class="progress-wrap" id="progress-wrap" style="display:none">
+  <progress id="dehost-progress" value="0" max="100"></progress>
+  <div class="progress-label" id="dehost-label"></div>
+</div>
+<ul id="file-list" style="display:none"></ul>
+
+<div id="status"></div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
