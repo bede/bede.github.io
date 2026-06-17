@@ -8,7 +8,7 @@
 // never leave the machine. The AWS SDK is vendored locally as a single bundled
 // module (vendor/aws-sdk.js) so the page has no runtime CDN dependency.
 import { S3Client, Upload } from "./vendor/aws-sdk.js";
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=20260615-1";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=20260617-1";
 
 // --- Fixed configuration -----------------------------------------------------
 // CLIMB uses Ceph RADOS Gateway (S3-compatible), not real AWS, so:
@@ -21,7 +21,7 @@ const REGION = "us-east-1";
 
 console.log(`updeacon: bucket "${BUCKET}" at ${ENDPOINT}`);
 
-const ASSET_VERSION = "20260615-1";
+const ASSET_VERSION = "20260617-1";
 
 // Matches fastq/fasta sequence files, optionally .gz compressed (fq/fa short
 // forms included).

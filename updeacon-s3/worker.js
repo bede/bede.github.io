@@ -1,4 +1,4 @@
-import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=20260615-1";
+import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=20260617-1";
 
 // Web Worker for off-main-thread WASM dehosting (deacon filtering).
 //
@@ -8,7 +8,7 @@ import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=20260615-1";
 // memory stays bounded to roughly one batch + one in-flight upload part.
 let wasm = null;
 let index = null;
-const ASSET_VERSION = "20260615-1";
+const ASSET_VERSION = "20260617-1";
 const OUTPUT_BATCH_BYTES = 4 * 1024 * 1024; // 4 MiB
 
 // Per-file filtering state, set up by MSG.FILTER and drained by MSG.PULL.
