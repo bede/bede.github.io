@@ -38,6 +38,17 @@
   .drop-zone .filename:empty { display: none; }
   .drop-zone .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
   .drop-zone .idx-info:empty { display: none; }
+  .index-status { border: 1px solid #ddd; background: #fff; padding: 1rem; margin-bottom: 1rem; transition: all 0.2s; text-align: center; }
+  .index-status input { display: none; }
+  .index-status .filename { font-weight: 600; color: #333; }
+  .index-status progress { width: 100%; margin-top: 0.5rem; }
+  .index-status .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
+  .index-status .idx-info:empty { display: none; }
+  .index-status .index-actions { display: flex; gap: 0.8rem; justify-content: center; }
+  .index-status button { margin-top: 0.6rem; padding: 0.4rem 1rem; font-size: 0.85rem; }
+  .index-status.loaded { border-color: #4caf50; background: #f0fff0; }
+  .index-status.failed { border: 2px dashed #d8a0a0; cursor: pointer; }
+  .index-status.failed:hover, .index-status.failed.dragover { border-color: #713da7; background: #f6effd; }
   .actions { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.4rem; }
   button { background: #936dd0; color: #fff; border: none; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: background 0.2s; }
   button:hover:not(:disabled) { background: #835dc1; }
@@ -74,10 +85,20 @@
   <b>Usage</b>
   <ol>
     <li>Enter the <em>access key ID</em> and <em>secret access key</em> shown in the 'S3 Buckets' area of the 'artic-drc-collab' tenancy in the <a href="https://bryn.climb.ac.uk">CLIMB portal</a></li>
-    <li>Drag and drop a local copy of the <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61.idx">panhuman-1 Deacon index</a> (850&nbsp;MB)</li>
-    <li>Drag and drop the directory of sequences you wish to upload</li>
+    <li>Drag and drop the directory of FASTQ/FASTA sequences you wish to upload</li>
     <li>Press upload and await completion</li>
   </ol>
+</div>
+
+<div class="field-row">
+  <div class="field">
+    <label for="server">Server address</label>
+    <input type="text" id="server" name="server" autocomplete="on" spellcheck="false" placeholder="S3 endpoint URL">
+  </div>
+  <div class="field">
+    <label for="bucket">Bucket</label>
+    <input type="text" id="bucket" name="bucket" autocomplete="on" spellcheck="false" placeholder="S3 bucket">
+  </div>
 </div>
 
 <div class="field-row">
@@ -99,11 +120,14 @@
   </div>
 </div>
 
-<div class="drop-zone" id="index-zone">
+<div class="index-status" id="index-status">
   <input type="file" id="index-input" accept=".idx">
-  <div class="label">Drop a Deacon index (.idx), or click to select</div>
-  <div class="filename" id="index-name"></div>
+  <div class="filename" id="index-name">Index</div>
+  <progress id="index-progress" value="0" max="100" style="display:none"></progress>
   <div class="idx-info" id="index-info"></div>
+  <div class="index-actions">
+    <button id="index-retry" type="button" hidden>Retry download</button>
+  </div>
 </div>
 
 <div class="drop-zone" id="dir-zone">

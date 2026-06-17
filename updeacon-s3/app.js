@@ -19,7 +19,9 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-console.log(`updeacon: bucket "${BUCKET}" at ${ENDPOINT}`);
+const BUILD_COMMIT = "d570daf";
+
+console.log(`updeacon: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
 
 const ASSET_VERSION = "20260617-1";
 
@@ -34,16 +36,27 @@ const QUEUE_SIZE = 4;
 // Largest index we'll try to load into browser memory.
 const MAX_INDEX_BYTES = 1024 * 1024 * 1024; // 1 GB
 
+// Recommended index, downloaded and cached automatically on first visit. The
+// manual drop zone below is only a fallback for when this download fails.
+const INDEX_URL =
+  "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61.idx";
+const INDEX_FILENAME = "panhuman-1.k31w61.idx";
+const INDEX_DISPLAY_NAME = "panhuman-1 index"; // shown in the panel; filename is kept for summaries
+
 // --- DOM ---------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
+const bucketEl = $("bucket");
+const serverEl = $("server");
 const accessKeyEl = $("access-key");
 const secretKeyEl = $("secret-key");
 const runNameEl = $("run-name");
 const namePrefixEl = $("name-prefix");
-const indexZone = $("index-zone");
+const indexStatus = $("index-status");
 const indexInput = $("index-input");
 const indexName = $("index-name");
 const indexInfo = $("index-info");
+const indexProgress = $("index-progress");
+const indexRetry = $("index-retry");
 const dirZone = $("dir-zone");
 const dirInput = $("dir-input");
 const dirSummary = $("dir-summary");
@@ -55,6 +68,11 @@ const dehostLabel = $("dehost-label");
 const fileListEl = $("file-list");
 const statusEl = $("status");
 
+// Prefill the bucket and server fields with the defaults, preserving any values
+// the browser restored. BUCKET/ENDPOINT stay the source of truth for defaults.
+bucketEl.value = bucketEl.value || BUCKET;
+serverEl.value = serverEl.value || ENDPOINT;
+
 // --- State -------------------------------------------------------------------
 let selectedFiles = []; // { file, key } entries, sequence files only
 let fileRows = []; // { li, st } DOM rows, one per selected file (same order)
@@ -64,6 +82,9 @@ let indexLoaded = false;
 let indexFilename = ""; // name of the loaded .idx (recorded in summaries)
 let indexK = null; // k-mer length parsed from the index info string
 let indexW = null; // window size parsed from the index info string
+let workerReady = false; // worker has finished WASM init (MSG.READY)
+let pendingIndexBuffer = null; // index bytes waiting for the worker to be ready
+let indexFailed = false; // auto-download failed; panel acts as a manual drop target
 
 // --- Helpers -----------------------------------------------------------------
 function setStatus(msg, kind) {
@@ -115,6 +136,8 @@ function updateUploadEnabled() {
     isUploading ||
     !indexLoaded ||
     selectedFiles.length === 0 ||
+    !bucketEl.value.trim() ||
+    !serverEl.value.trim() ||
     !accessKeyEl.value.trim() ||
     !secretKeyEl.value.trim();
 }
@@ -190,18 +213,28 @@ worker.onmessage = (e) => {
   const m = e.data;
   switch (m.type) {
     case MSG.READY:
-      setStatus("Load a Deacon index to begin.");
+      workerReady = true;
+      // If the index download/cache lookup already finished, hand it over now.
+      if (pendingIndexBuffer) {
+        const buf = pendingIndexBuffer;
+        pendingIndexBuffer = null;
+        worker.postMessage({ type: MSG.LOAD_INDEX, data: buf }, [buf]);
+      }
       break;
     case MSG.INDEX_LOADED: {
       indexLoaded = true;
-      indexZone.classList.add("loaded");
+      indexFailed = false;
+      indexStatus.classList.remove("failed");
+      indexStatus.classList.add("loaded");
+      indexProgress.style.display = "none";
+      indexRetry.hidden = true;
       indexInfo.textContent = m.info;
       // info looks like "k=31, w=61 (12,345 minimizers)" — pull out k and w for
       // the per-file JSON summaries.
       const kw = /k=(\d+),\s*w=(\d+)/.exec(m.info || "");
       indexK = kw ? Number(kw[1]) : null;
       indexW = kw ? Number(kw[2]) : null;
-      setStatus("Index loaded. Select sequences and enter CLIMB credentials.");
+      setStatus("Index loaded. Select sequences and enter S3 credentials.");
       updateUploadEnabled();
       break;
     }
@@ -266,18 +299,22 @@ function dehostStream(file, hooks) {
   });
 }
 
-// --- Index selection ---------------------------------------------------------
-indexZone.addEventListener("click", () => {
-  if (!isUploading) indexInput.click();
+// --- Index selection (manual fallback) ---------------------------------------
+// The index panel only behaves as a drop/click target once auto-download has
+// failed (indexFailed); otherwise it's a passive status display.
+indexStatus.addEventListener("click", () => {
+  if (indexFailed && !isUploading) indexInput.click();
 });
-indexZone.addEventListener("dragover", (e) => {
+indexStatus.addEventListener("dragover", (e) => {
+  if (!indexFailed) return;
   e.preventDefault();
-  if (!isUploading) indexZone.classList.add("dragover");
+  if (!isUploading) indexStatus.classList.add("dragover");
 });
-indexZone.addEventListener("dragleave", () => indexZone.classList.remove("dragover"));
-indexZone.addEventListener("drop", (e) => {
+indexStatus.addEventListener("dragleave", () => indexStatus.classList.remove("dragover"));
+indexStatus.addEventListener("drop", (e) => {
+  if (!indexFailed) return;
   e.preventDefault();
-  indexZone.classList.remove("dragover");
+  indexStatus.classList.remove("dragover");
   if (isUploading) return;
   if (e.dataTransfer.files.length > 0) loadIndexFile(e.dataTransfer.files[0]);
 });
@@ -295,15 +332,164 @@ async function loadIndexFile(file) {
     return;
   }
   indexLoaded = false;
+  indexFailed = false;
   indexFilename = file.name;
-  indexZone.classList.remove("loaded");
+  indexStatus.classList.remove("loaded", "failed", "dragover");
+  indexRetry.hidden = true;
   updateUploadEnabled();
   indexName.textContent = file.name;
   indexInfo.textContent = "Loading…";
   setStatus(`Loading index (${(file.size / 1024 / 1024).toFixed(0)}MB)…`);
   const buf = await file.arrayBuffer();
-  worker.postMessage({ type: MSG.LOAD_INDEX, data: buf }, [buf]);
+  sendIndexToWorker(buf);
 }
+
+// --- Index auto-download + cache ---------------------------------------------
+// The recommended index is fetched once and cached in IndexedDB so reloads are
+// instant and work offline. IndexedDB (not localStorage/Cache API) is used
+// because it reliably stores the ~850 MB binary blob.
+const IDB_NAME = "updeacon";
+const IDB_STORE = "index";
+
+function openIdxDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbRequest(makeReq) {
+  return new Promise((resolve, reject) => {
+    const req = makeReq();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function getCachedIndex(url) {
+  const db = await openIdxDB();
+  try {
+    return await idbRequest(() =>
+      db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(url)
+    );
+  } finally {
+    db.close();
+  }
+}
+
+async function putCachedIndex(url, blob) {
+  // Ask the browser to keep this large blob around rather than evict it.
+  if (navigator.storage?.persist) {
+    try {
+      await navigator.storage.persist();
+    } catch (_) {}
+  }
+  const db = await openIdxDB();
+  try {
+    await idbRequest(() =>
+      db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).put(blob, url)
+    );
+  } finally {
+    db.close();
+  }
+}
+
+// Hand index bytes to the worker, or stash them until the worker reports READY.
+function sendIndexToWorker(arrayBuffer) {
+  if (workerReady) {
+    worker.postMessage({ type: MSG.LOAD_INDEX, data: arrayBuffer }, [arrayBuffer]);
+  } else {
+    pendingIndexBuffer = arrayBuffer;
+  }
+}
+
+// Stream the index down with progress, returning it as a Blob. Throws on a
+// non-OK response or a network/CORS failure.
+async function downloadIndex(url, onProgress) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+  const total = Number(resp.headers.get("content-length")) || 0;
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let received = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    onProgress(received, total);
+  }
+  return new Blob(chunks);
+}
+
+function showIndexProgress(received, total) {
+  indexProgress.style.display = "";
+  if (total) {
+    const pct = (received / total) * 100;
+    indexProgress.removeAttribute("indeterminate");
+    indexProgress.value = pct;
+    indexInfo.textContent = `${humanBytes(received)} / ${humanBytes(total)} (${pct.toFixed(0)}%)`;
+  } else {
+    indexProgress.removeAttribute("value"); // indeterminate
+    indexInfo.textContent = `${humanBytes(received)} downloaded`;
+  }
+}
+
+// Turn the index panel itself into the manual fallback: a clickable/droppable
+// dashed target with a Retry button. Keeps everything in one box rather than
+// stacking a separate drop zone and an error banner.
+function showIndexFailure(err) {
+  console.error(err);
+  indexFailed = true;
+  indexProgress.style.display = "none";
+  indexName.textContent = INDEX_DISPLAY_NAME;
+  indexInfo.textContent =
+    `Automatic download failed (${err?.message || err}). ` +
+    "Click to select a local .idx, drag one here, or retry.";
+  indexRetry.hidden = false;
+  indexStatus.classList.remove("loaded");
+  indexStatus.classList.add("failed");
+  setStatus("");
+}
+
+// Orchestrate startup: load the cached index if present, otherwise download and
+// cache it, then hand the bytes to the worker for immediate use.
+async function initIndex() {
+  indexFilename = INDEX_FILENAME;
+  indexFailed = false;
+  indexName.textContent = INDEX_DISPLAY_NAME;
+  indexRetry.hidden = true;
+  indexStatus.classList.remove("failed", "loaded", "dragover");
+  try {
+    const cached = await getCachedIndex(INDEX_URL);
+    if (cached) {
+      indexInfo.textContent = "Loading cached index…";
+      setStatus("Loading cached index…");
+      sendIndexToWorker(await cached.arrayBuffer());
+      return;
+    }
+    indexInfo.textContent = "Downloading index…";
+    setStatus("Downloading recommended index…");
+    showIndexProgress(0, 0);
+    const blob = await downloadIndex(INDEX_URL, showIndexProgress);
+    await putCachedIndex(INDEX_URL, blob).catch((e) =>
+      console.warn("updeacon: failed to cache index", e)
+    );
+    indexProgress.style.display = "none";
+    indexInfo.textContent = "Loading index…";
+    setStatus("Loading index…");
+    sendIndexToWorker(await blob.arrayBuffer());
+  } catch (err) {
+    showIndexFailure(err);
+  }
+}
+
+indexRetry.addEventListener("click", (e) => {
+  e.stopPropagation(); // don't trigger the panel's click-to-select fallback
+  initIndex();
+});
 
 // --- Directory selection -----------------------------------------------------
 dirZone.addEventListener("click", () => {
@@ -380,7 +566,7 @@ function readAllEntries(reader) {
 // Access key ID persistence is left to the browser's native form autofill (the
 // field has a name + autocomplete). The secret key field has autocomplete off,
 // so the browser won't offer to remember it.
-[accessKeyEl, secretKeyEl].forEach((el) =>
+[bucketEl, serverEl, accessKeyEl, secretKeyEl].forEach((el) =>
   el.addEventListener("input", updateUploadEnabled)
 );
 
@@ -407,6 +593,8 @@ uploadBtn.addEventListener("click", uploadAll);
 async function uploadAll() {
   const accessKeyId = accessKeyEl.value.trim();
   const secretAccessKey = secretKeyEl.value.trim();
+  const bucket = bucketEl.value.trim();
+  const endpoint = serverEl.value.trim();
 
   const timestamp = timestampPrefix();
   const dirPrefix = uploadDirName(timestamp); // <timestamp> or <timestamp>--<name>
@@ -443,7 +631,7 @@ async function uploadAll() {
   const rows = fileRows;
 
   const client = new S3Client({
-    endpoint: ENDPOINT,
+    endpoint,
     region: REGION,
     forcePathStyle: true,
     credentials: { accessKeyId, secretAccessKey },
@@ -464,7 +652,7 @@ async function uploadAll() {
     await new Upload({
       client,
       params: {
-        Bucket: BUCKET,
+        Bucket: bucket,
         Key: `${dirPrefix}/access_key_id`,
         Body: new Blob([accessKeyId], { type: "text/plain" }),
         ContentType: "text/plain",
@@ -505,7 +693,7 @@ async function uploadAll() {
       const stream = dehostStream(file, { onProgress, onStats });
       const up = new Upload({
         client,
-        params: { Bucket: BUCKET, Key: key, Body: stream },
+        params: { Bucket: bucket, Key: key, Body: stream },
         queueSize: QUEUE_SIZE,
         partSize: PART_SIZE,
       });
@@ -521,7 +709,7 @@ async function uploadAll() {
       await new Upload({
         client,
         params: {
-          Bucket: BUCKET,
+          Bucket: bucket,
           Key: `${key}.deacon.json`,
           Body: new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" }),
           ContentType: "application/json",
@@ -623,3 +811,10 @@ function formatError(err) {
   }
   return `Upload failed: ${name}: ${msg}`;
 }
+
+// --- Startup -----------------------------------------------------------------
+// Kick off the index download/cache lookup, in parallel with WASM init;
+// sendIndexToWorker queues the bytes until the worker reports READY. Invoked
+// last so all module-level declarations (IndexedDB constants, helpers) are
+// initialized before it runs.
+initIndex();
