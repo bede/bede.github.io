@@ -19,7 +19,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "d570daf";
+const BUILD_COMMIT = "547b4d2";
 
 console.log(`updeacon: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
 
@@ -61,12 +61,14 @@ const dirZone = $("dir-zone");
 const dirInput = $("dir-input");
 const dirSummary = $("dir-summary");
 const uploadBtn = $("upload-btn");
+const filterBtn = $("filter-btn");
 const resetBtn = $("reset-btn");
 const progressWrap = $("progress-wrap");
 const dehostProgress = $("dehost-progress");
 const dehostLabel = $("dehost-label");
 const fileListEl = $("file-list");
 const statusEl = $("status");
+const purgeIndexEl = $("purge-index");
 
 // Prefill the bucket and server fields with the defaults, preserving any values
 // the browser restored. BUCKET/ENDPOINT stay the source of truth for defaults.
@@ -84,7 +86,8 @@ let indexK = null; // k-mer length parsed from the index info string
 let indexW = null; // window size parsed from the index info string
 let workerReady = false; // worker has finished WASM init (MSG.READY)
 let pendingIndexBuffer = null; // index bytes waiting for the worker to be ready
-let indexFailed = false; // auto-download failed; panel acts as a manual drop target
+let indexFailed = false; // download failed; panel acts as a manual drop target
+let indexNeedsDownload = false; // not cached; panel click starts the download
 
 // --- Helpers -----------------------------------------------------------------
 function setStatus(msg, kind) {
@@ -132,10 +135,23 @@ function uploadDirName(timestamp) {
 }
 
 function updateUploadEnabled() {
+  // With no index loaded, the primary button instead fetches the index (enabled
+  // whenever the panel is in a "click to download" or failed/retry state); the
+  // "Filter only" button needs an index, so it stays disabled.
+  if (!indexLoaded) {
+    const canFetch = indexNeedsDownload || indexFailed;
+    uploadBtn.textContent = canFetch ? "Download index" : "Filter & upload";
+    uploadBtn.disabled = isUploading || !canFetch;
+    filterBtn.disabled = true;
+    return;
+  }
+  uploadBtn.textContent = "Filter & upload";
+  const haveFiles = selectedFiles.length > 0;
+  // "Filter only" runs locally — it just needs an index and files, no S3 details.
+  filterBtn.disabled = isUploading || !haveFiles;
   uploadBtn.disabled =
     isUploading ||
-    !indexLoaded ||
-    selectedFiles.length === 0 ||
+    !haveFiles ||
     !bucketEl.value.trim() ||
     !serverEl.value.trim() ||
     !accessKeyEl.value.trim() ||
@@ -224,7 +240,8 @@ worker.onmessage = (e) => {
     case MSG.INDEX_LOADED: {
       indexLoaded = true;
       indexFailed = false;
-      indexStatus.classList.remove("failed");
+      indexNeedsDownload = false;
+      indexStatus.classList.remove("failed", "needs-download");
       indexStatus.classList.add("loaded");
       indexProgress.style.display = "none";
       indexRetry.hidden = true;
@@ -234,7 +251,7 @@ worker.onmessage = (e) => {
       const kw = /k=(\d+),\s*w=(\d+)/.exec(m.info || "");
       indexK = kw ? Number(kw[1]) : null;
       indexW = kw ? Number(kw[2]) : null;
-      setStatus("Index loaded. Select sequences and enter S3 credentials.");
+      setStatus("Index loaded. Enter S3 credentials and select sequences.");
       updateUploadEnabled();
       break;
     }
@@ -299,20 +316,24 @@ function dehostStream(file, hooks) {
   });
 }
 
-// --- Index selection (manual fallback) ---------------------------------------
-// The index panel only behaves as a drop/click target once auto-download has
-// failed (indexFailed); otherwise it's a passive status display.
+// --- Index selection ----------------------------------------------------------
+// The index panel becomes an actionable target in two cases: when the index
+// isn't cached (click downloads it) or when a download failed (click selects a
+// local .idx). A local .idx can be dropped in either state; otherwise the panel
+// is a passive status display.
 indexStatus.addEventListener("click", () => {
-  if (indexFailed && !isUploading) indexInput.click();
+  if (isUploading) return;
+  if (indexNeedsDownload) downloadAndLoadIndex();
+  else if (indexFailed) indexInput.click();
 });
 indexStatus.addEventListener("dragover", (e) => {
-  if (!indexFailed) return;
+  if (!(indexNeedsDownload || indexFailed)) return;
   e.preventDefault();
   if (!isUploading) indexStatus.classList.add("dragover");
 });
 indexStatus.addEventListener("dragleave", () => indexStatus.classList.remove("dragover"));
 indexStatus.addEventListener("drop", (e) => {
-  if (!indexFailed) return;
+  if (!(indexNeedsDownload || indexFailed)) return;
   e.preventDefault();
   indexStatus.classList.remove("dragover");
   if (isUploading) return;
@@ -333,8 +354,9 @@ async function loadIndexFile(file) {
   }
   indexLoaded = false;
   indexFailed = false;
+  indexNeedsDownload = false;
   indexFilename = file.name;
-  indexStatus.classList.remove("loaded", "failed", "dragover");
+  indexStatus.classList.remove("loaded", "failed", "needs-download", "dragover");
   indexRetry.hidden = true;
   updateUploadEnabled();
   indexName.textContent = file.name;
@@ -396,6 +418,17 @@ async function putCachedIndex(url, blob) {
   }
 }
 
+async function clearCachedIndex(url) {
+  const db = await openIdxDB();
+  try {
+    await idbRequest(() =>
+      db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).delete(url)
+    );
+  } finally {
+    db.close();
+  }
+}
+
 // Hand index bytes to the worker, or stash them until the worker reports READY.
 function sendIndexToWorker(arrayBuffer) {
   if (workerReady) {
@@ -437,31 +470,50 @@ function showIndexProgress(received, total) {
   }
 }
 
-// Turn the index panel itself into the manual fallback: a clickable/droppable
-// dashed target with a Retry button. Keeps everything in one box rather than
-// stacking a separate drop zone and an error banner.
+// Prompt to download: a clickable/droppable dashed panel shown when the index
+// isn't cached. Clicking starts the download; a local .idx can also be dropped.
+function showIndexNeedsDownload() {
+  indexNeedsDownload = true;
+  indexFailed = false;
+  indexProgress.style.display = "none";
+  indexRetry.hidden = true;
+  indexName.textContent = INDEX_DISPLAY_NAME;
+  indexInfo.textContent =
+    "No index cached. Click to download (850MB), or drag/drop a local .idx.";
+  indexStatus.classList.remove("loaded", "failed");
+  indexStatus.classList.add("needs-download");
+  setStatus("");
+  updateUploadEnabled(); // button becomes "Download index"
+}
+
+// Turn the index panel into the manual fallback after a failed download: a
+// clickable/droppable dashed target with a Retry button. Keeps everything in
+// one box rather than stacking a separate drop zone and an error banner.
 function showIndexFailure(err) {
   console.error(err);
   indexFailed = true;
+  indexNeedsDownload = false;
   indexProgress.style.display = "none";
   indexName.textContent = INDEX_DISPLAY_NAME;
   indexInfo.textContent =
-    `Automatic download failed (${err?.message || err}). ` +
+    `Download failed (${err?.message || err}). ` +
     "Click to select a local .idx, drag one here, or retry.";
   indexRetry.hidden = false;
-  indexStatus.classList.remove("loaded");
+  indexStatus.classList.remove("loaded", "needs-download");
   indexStatus.classList.add("failed");
   setStatus("");
+  updateUploadEnabled(); // button becomes "Download index" (retry)
 }
 
-// Orchestrate startup: load the cached index if present, otherwise download and
-// cache it, then hand the bytes to the worker for immediate use.
+// Startup: load the cached index immediately if present; otherwise prompt the
+// user to download it (no automatic download).
 async function initIndex() {
   indexFilename = INDEX_FILENAME;
   indexFailed = false;
+  indexNeedsDownload = false;
   indexName.textContent = INDEX_DISPLAY_NAME;
   indexRetry.hidden = true;
-  indexStatus.classList.remove("failed", "loaded", "dragover");
+  indexStatus.classList.remove("failed", "needs-download", "loaded", "dragover");
   try {
     const cached = await getCachedIndex(INDEX_URL);
     if (cached) {
@@ -470,8 +522,23 @@ async function initIndex() {
       sendIndexToWorker(await cached.arrayBuffer());
       return;
     }
+    showIndexNeedsDownload();
+  } catch (err) {
+    showIndexFailure(err);
+  }
+}
+
+// Download the recommended index (with progress), cache it, and load it.
+async function downloadAndLoadIndex() {
+  indexNeedsDownload = false;
+  indexFailed = false;
+  indexFilename = INDEX_FILENAME;
+  indexRetry.hidden = true;
+  indexStatus.classList.remove("needs-download", "failed", "dragover");
+  updateUploadEnabled(); // disable the button while the download is in flight
+  try {
     indexInfo.textContent = "Downloading index…";
-    setStatus("Downloading recommended index…");
+    setStatus("Downloading index…");
     showIndexProgress(0, 0);
     const blob = await downloadIndex(INDEX_URL, showIndexProgress);
     await putCachedIndex(INDEX_URL, blob).catch((e) =>
@@ -487,8 +554,29 @@ async function initIndex() {
 }
 
 indexRetry.addEventListener("click", (e) => {
-  e.stopPropagation(); // don't trigger the panel's click-to-select fallback
-  initIndex();
+  e.stopPropagation(); // don't trigger the panel's click handler
+  downloadAndLoadIndex();
+});
+
+// Purge the cached index from IndexedDB, free it from the worker, and return the
+// panel to the "click to download" state.
+purgeIndexEl.addEventListener("click", async (e) => {
+  e.preventDefault();
+  if (isUploading) return;
+  // Update the UI synchronously first — Safari's IndexedDB can stall, so don't
+  // gate the visible reset on the (awaited) cache deletion.
+  indexLoaded = false;
+  worker.postMessage({ type: MSG.RESET });
+  updateUploadEnabled();
+  showIndexNeedsDownload();
+  setStatus("Clearing index cache…");
+  try {
+    await clearCachedIndex(INDEX_URL);
+    setStatus("Index cache cleared.");
+  } catch (err) {
+    console.warn("updeacon: failed to clear cached index", err);
+    setStatus("Couldn't clear the index cache: " + (err?.message || err), "error");
+  }
 });
 
 // --- Directory selection -----------------------------------------------------
@@ -588,7 +676,121 @@ resetBtn.addEventListener("click", () => {
   dirZone.classList.remove("loaded");
 });
 
-uploadBtn.addEventListener("click", uploadAll);
+uploadBtn.addEventListener("click", () => {
+  if (indexLoaded) uploadAll();
+  else downloadAndLoadIndex(); // no index yet — fetch it instead
+});
+
+filterBtn.addEventListener("click", filterOnly);
+
+// Trigger a browser download of `blob` under `filename`.
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Filter (dehost) each selected file locally and save the cleaned output to the
+// user's machine — no S3, no credentials. Reuses the same WASM pull-stream as the
+// upload path; the filtered output is collected into a Blob and downloaded under
+// the original filename (compression matches the input, so the name stays valid).
+async function filterOnly() {
+  const files = selectedFiles.map((s) => s.file).filter((f) => SEQ_RE.test(f.name));
+  if (!files.length) return;
+
+  console.log("updeacon: deacon filter params", {
+    index: indexFilename,
+    k: indexK,
+    w: indexW,
+    deplete: FILTER_DEFAULTS.deplete,
+    abs_threshold: FILTER_DEFAULTS.absThreshold,
+    rel_threshold: FILTER_DEFAULTS.relThreshold,
+    prefix_length: FILTER_DEFAULTS.prefixLength,
+  });
+
+  isUploading = true; // reuse the "busy" flag: blocks the other buttons + reset
+  updateUploadEnabled();
+  resetBtn.disabled = true;
+  setStatus("Filtering…");
+
+  progressWrap.style.display = "block";
+  dehostProgress.value = 0;
+  dehostLabel.textContent = "";
+  fileRows.forEach(({ li, st }) => {
+    li.className = "";
+    st.textContent = "queued";
+  });
+  const rows = fileRows;
+
+  let dehostedBefore = 0; // input bytes of fully-dehosted files
+  let totalBasesIn = 0;
+  let completed = 0;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      rows[i].li.className = "active";
+      rows[i].st.textContent = "filtering…";
+
+      let curProcessed = 0;
+      let fileStats = null;
+
+      const renderRow = () => {
+        const dpct = file.size ? Math.min(100, (curProcessed / file.size) * 100) : 100;
+        rows[i].st.textContent = `filtered ${dpct.toFixed(0)}%`;
+      };
+      const onProgress = (m) => {
+        curProcessed = m.bytesProcessed || 0;
+        const pct = totalBytes ? ((dehostedBefore + curProcessed) / totalBytes) * 100 : 0;
+        dehostProgress.value = pct;
+        dehostLabel.textContent =
+          `Filtering ${i + 1} of ${files.length} · ` +
+          `${humanBytes(dehostedBefore + curProcessed)} / ${humanBytes(totalBytes)} ` +
+          `(${pct.toFixed(1)}%)`;
+        renderRow();
+      };
+      const onStats = (stats) => {
+        fileStats = stats;
+      };
+
+      // Response.blob() drains the pull-stream, so the WASM filter is paced by
+      // the read and the dehosted output is materialised in memory before saving.
+      const stream = dehostStream(file, { onProgress, onStats });
+      const blob = await new Response(stream).blob();
+      downloadBlob(blob, file.name);
+
+      dehostedBefore += file.size;
+      totalBasesIn += Number(fileStats?.basesIn || 0);
+      rows[i].li.className = "done";
+      const readsIn = Number(fileStats?.readsIn || 0);
+      const readsOut = Number(fileStats?.readsOut || 0);
+      rows[i].st.textContent = readsIn
+        ? `done · ${readsOut.toLocaleString()}/${readsIn.toLocaleString()} reads kept`
+        : "done";
+      completed++;
+    }
+
+    dehostProgress.value = 100;
+    dehostLabel.textContent = `Processed ${humanBases(totalBasesIn)} of input across ${completed} file${completed === 1 ? "" : "s"}.`;
+    setStatus(`Filtering complete — ${completed} file${completed === 1 ? "" : "s"} downloaded.`, "success");
+  } catch (err) {
+    const idx = completed; // the file that failed
+    if (rows[idx]) {
+      rows[idx].li.className = "failed";
+      rows[idx].st.textContent = "failed";
+    }
+    console.error(err);
+    setStatus("Filtering failed: " + (err?.message || err), "error");
+  } finally {
+    isUploading = false;
+    resetBtn.disabled = false;
+    updateUploadEnabled();
+  }
+}
 
 async function uploadAll() {
   const accessKeyId = accessKeyEl.value.trim();

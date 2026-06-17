@@ -40,21 +40,30 @@
   .drop-zone .idx-info:empty { display: none; }
   .index-status { border: 1px solid #ddd; background: #fff; padding: 1rem; margin-bottom: 1rem; transition: all 0.2s; text-align: center; }
   .index-status input { display: none; }
-  .index-status .filename { font-weight: 600; color: #333; }
+  .index-status .filename { color: #333; }
   .index-status progress { width: 100%; margin-top: 0.5rem; }
   .index-status .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
   .index-status .idx-info:empty { display: none; }
   .index-status .index-actions { display: flex; gap: 0.8rem; justify-content: center; }
   .index-status button { margin-top: 0.6rem; padding: 0.4rem 1rem; font-size: 0.85rem; }
   .index-status.loaded { border-color: #4caf50; background: #f0fff0; }
-  .index-status.failed { border: 2px dashed #d8a0a0; cursor: pointer; }
+  .index-status.needs-download, .index-status.failed { border-width: 2px; border-style: dashed; cursor: pointer; }
+  .index-status.needs-download { border-color: #aaa; }
+  .index-status.failed { border-color: #d8a0a0; }
+  .index-status.needs-download:hover, .index-status.needs-download.dragover,
   .index-status.failed:hover, .index-status.failed.dragover { border-color: #713da7; background: #f6effd; }
   .actions { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.4rem; }
-  button { background: #936dd0; color: #fff; border: none; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: background 0.2s; }
+  /* Primary (filled purple) */
+  button { background: #936dd0; color: #fff; border: 1px solid transparent; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: all 0.15s; }
   button:hover:not(:disabled) { background: #835dc1; }
-  button:disabled { background: #aaa; cursor: not-allowed; }
-  #reset-btn { background: #6c757d; }
-  #reset-btn:hover:not(:disabled) { background: #5b636a; }
+  button:disabled { background: #ececec; color: #aaa; border-color: transparent; cursor: not-allowed; }
+  /* Secondary (outlined): Filter only = purple, Reset = grey */
+  #filter-btn, #reset-btn { background: #fff; }
+  #filter-btn { color: #713da7; border-color: #c7b3e8; }
+  #filter-btn:hover:not(:disabled) { background: #f6effd; border-color: #936dd0; }
+  #reset-btn { color: #6c757d; border-color: #ced4da; }
+  #reset-btn:hover:not(:disabled) { background: #f3f4f5; border-color: #adb5bd; }
+  #filter-btn:disabled, #reset-btn:disabled { background: #fff; color: #ccc; border-color: #e8e8e8; }
   .progress-wrap { margin-top: 1rem; }
   progress { width: 100%; height: 0.55rem; appearance: none; -webkit-appearance: none; accent-color: #6c757d; border: none; background: #eee; }
   progress[value]::-webkit-progress-bar { background: #eee; }
@@ -73,20 +82,23 @@
   #status.error { border-color: #e74c3c; color: #e74c3c; }
   #status.success { border-color: #4caf50; color: #4caf50; }
   .info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
+  #purge-index { font-size: 0.7rem; color: #bbb; }
+  #purge-index:hover { color: #888; }
   a { color: #333; text-decoration: underline; }
   a:hover { color: #000; }
 </style>
 </head>
 <body>
 <h1>updeacon-s3 <span class="alpha-tag">alpha</span></h1>
-<p class="subtitle">Dehost and upload fasta/fastq file(s) to CLIMB S3 object storage.
+<p class="subtitle">Securely dehost and upload DNA sequences in fasta/fastq format directly to S3 object storage.
   Runs <a href="https://github.com/bede/deacon">Deacon</a> locally using WebAssembly to remove human sequences prior to upload.</p>
 <div class="usage">
   <b>Usage</b>
   <ol>
-    <li>Enter the <em>access key ID</em> and <em>secret access key</em> shown in the 'S3 Buckets' area of the 'artic-drc-collab' tenancy in the <a href="https://bryn.climb.ac.uk">CLIMB portal</a></li>
-    <li>Drag and drop the directory of FASTQ/FASTA sequences you wish to upload</li>
-    <li>Press upload and await completion</li>
+    <li>Enter S3-compatible object storage credentials.</li>
+    <li>Press 'download index' to fetch a human Deacon index. You should only need to do this once. Alternatively, drag & drop a copy of the <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61.idx">panhuman-1 index</a>.</li>
+    <li>Drag &amp; drop a directory containing FASTQ/FASTA sequences you wish to upload.</li>
+    <li>Press 'Filter &amp; upload' and await completion, or 'Filter only' to save filtered files locally without uploading.</li>
   </ol>
 </div>
 
@@ -104,11 +116,11 @@
 <div class="field-row">
   <div class="field">
     <label for="access-key">Access key ID</label>
-    <input type="text" id="access-key" name="access-key-id" autocomplete="on" spellcheck="false" placeholder="CLIMB S3 ID">
+    <input type="text" id="access-key" name="access-key-id" autocomplete="on" spellcheck="false" placeholder="S3 access key ID">
   </div>
   <div class="field">
     <label for="secret-key">Secret access key</label>
-    <input type="password" id="secret-key" autocomplete="off" spellcheck="false" placeholder="CLIMB S3 secret">
+    <input type="password" id="secret-key" autocomplete="off" spellcheck="false" placeholder="S3 secret access key">
   </div>
 </div>
 
@@ -137,7 +149,8 @@
 </div>
 
 <div class="actions">
-  <button id="upload-btn" disabled>Upload</button>
+  <button id="upload-btn" disabled>Filter &amp; upload</button>
+  <button id="filter-btn" type="button" disabled>Filter only</button>
   <button id="reset-btn" type="button">Reset</button>
 </div>
 
@@ -148,6 +161,8 @@
 <ul id="file-list" style="display:none"></ul>
 
 <div id="status"></div>
+
+<p class="info" style="text-align:center"><a href="#" id="purge-index">Clear index cache</a></p>
 
 <script type="module" src="./app.js"></script>
 </body>
