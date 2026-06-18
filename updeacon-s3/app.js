@@ -19,7 +19,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "547b4d2";
+const BUILD_COMMIT = "6e51990";
 
 console.log(`updeacon: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
 
@@ -41,7 +41,7 @@ const MAX_INDEX_BYTES = 1024 * 1024 * 1024; // 1 GB
 const INDEX_URL =
   "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61.idx";
 const INDEX_FILENAME = "panhuman-1.k31w61.idx";
-const INDEX_DISPLAY_NAME = "panhuman-1 index"; // shown in the panel; filename is kept for summaries
+const INDEX_DISPLAY_NAME = "Index: panhuman-1"; // shown in the panel; filename is kept for summaries
 
 // --- DOM ---------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -57,6 +57,7 @@ const indexName = $("index-name");
 const indexInfo = $("index-info");
 const indexProgress = $("index-progress");
 const indexRetry = $("index-retry");
+const indexDownload = $("index-download");
 const dirZone = $("dir-zone");
 const dirInput = $("dir-input");
 const dirSummary = $("dir-summary");
@@ -80,6 +81,7 @@ let selectedFiles = []; // { file, key } entries, sequence files only
 let fileRows = []; // { li, st } DOM rows, one per selected file (same order)
 let totalBytes = 0;
 let isUploading = false;
+let frozenPrefix = null; // once an upload commits, the timestamp it was given
 let indexLoaded = false;
 let indexFilename = ""; // name of the loaded .idx (recorded in summaries)
 let indexK = null; // k-mer length parsed from the index info string
@@ -134,28 +136,34 @@ function uploadDirName(timestamp) {
   return name ? `${timestamp}--${name}` : timestamp;
 }
 
+// Toggle a button's disabled state, giving it a strong pulsing glow while it's
+// clickable so the available action draws the eye.
+function setButtonDisabled(btn, disabled) {
+  btn.disabled = disabled;
+  btn.classList.toggle("pulse-glow", !disabled);
+}
+
 function updateUploadEnabled() {
-  // With no index loaded, the primary button instead fetches the index (enabled
-  // whenever the panel is in a "click to download" or failed/retry state); the
-  // "Filter only" button needs an index, so it stays disabled.
+  // Downloading the index is handled by the "Download index" button inside the
+  // index panel, so the action buttons here just stay disabled until an index is
+  // loaded (and the "Filter only" button needs files too).
   if (!indexLoaded) {
-    const canFetch = indexNeedsDownload || indexFailed;
-    uploadBtn.textContent = canFetch ? "Download index" : "Filter & upload";
-    uploadBtn.disabled = isUploading || !canFetch;
-    filterBtn.disabled = true;
+    setButtonDisabled(uploadBtn, true);
+    setButtonDisabled(filterBtn, true);
     return;
   }
-  uploadBtn.textContent = "Filter & upload";
   const haveFiles = selectedFiles.length > 0;
   // "Filter only" runs locally — it just needs an index and files, no S3 details.
-  filterBtn.disabled = isUploading || !haveFiles;
-  uploadBtn.disabled =
+  setButtonDisabled(filterBtn, isUploading || !haveFiles);
+  setButtonDisabled(
+    uploadBtn,
     isUploading ||
-    !haveFiles ||
-    !bucketEl.value.trim() ||
-    !serverEl.value.trim() ||
-    !accessKeyEl.value.trim() ||
-    !secretKeyEl.value.trim();
+      !haveFiles ||
+      !bucketEl.value.trim() ||
+      !serverEl.value.trim() ||
+      !accessKeyEl.value.trim() ||
+      !secretKeyEl.value.trim()
+  );
 }
 
 // Build the upload list from a flat array of File objects. Keys are
@@ -245,6 +253,7 @@ worker.onmessage = (e) => {
       indexStatus.classList.add("loaded");
       indexProgress.style.display = "none";
       indexRetry.hidden = true;
+      indexDownload.hidden = true;
       indexInfo.textContent = m.info;
       // info looks like "k=31, w=61 (12,345 minimizers)" — pull out k and w for
       // the per-file JSON summaries.
@@ -358,6 +367,7 @@ async function loadIndexFile(file) {
   indexFilename = file.name;
   indexStatus.classList.remove("loaded", "failed", "needs-download", "dragover");
   indexRetry.hidden = true;
+  indexDownload.hidden = true;
   updateUploadEnabled();
   indexName.textContent = file.name;
   indexInfo.textContent = "Loading…";
@@ -477,9 +487,13 @@ function showIndexNeedsDownload() {
   indexFailed = false;
   indexProgress.style.display = "none";
   indexRetry.hidden = true;
-  indexName.textContent = INDEX_DISPLAY_NAME;
+  indexDownload.hidden = false;
+  indexDownload.classList.remove("pulse-glow");
+  void indexDownload.offsetWidth;
+  indexDownload.classList.add("pulse-glow");
+  indexName.textContent = ""; // the "Download panhuman-1 index" button stands in for the title here
   indexInfo.textContent =
-    "No index cached. Click to download (850MB), or drag/drop a local .idx.";
+    "No Deacon index cached. Click to download or drag/drop local .idx file.";
   indexStatus.classList.remove("loaded", "failed");
   indexStatus.classList.add("needs-download");
   setStatus("");
@@ -499,6 +513,7 @@ function showIndexFailure(err) {
     `Download failed (${err?.message || err}). ` +
     "Click to select a local .idx, drag one here, or retry.";
   indexRetry.hidden = false;
+  indexDownload.hidden = true;
   indexStatus.classList.remove("loaded", "needs-download");
   indexStatus.classList.add("failed");
   setStatus("");
@@ -513,6 +528,7 @@ async function initIndex() {
   indexNeedsDownload = false;
   indexName.textContent = INDEX_DISPLAY_NAME;
   indexRetry.hidden = true;
+  indexDownload.hidden = true;
   indexStatus.classList.remove("failed", "needs-download", "loaded", "dragover");
   try {
     const cached = await getCachedIndex(INDEX_URL);
@@ -533,9 +549,11 @@ async function downloadAndLoadIndex() {
   indexNeedsDownload = false;
   indexFailed = false;
   indexFilename = INDEX_FILENAME;
+  indexName.textContent = INDEX_DISPLAY_NAME; // restore the title (needs-download hid it for the button)
   indexRetry.hidden = true;
+  indexDownload.hidden = true;
   indexStatus.classList.remove("needs-download", "failed", "dragover");
-  updateUploadEnabled(); // disable the button while the download is in flight
+  updateUploadEnabled();
   try {
     indexInfo.textContent = "Downloading index…";
     setStatus("Downloading index…");
@@ -552,6 +570,11 @@ async function downloadAndLoadIndex() {
     showIndexFailure(err);
   }
 }
+
+indexDownload.addEventListener("click", (e) => {
+  e.stopPropagation(); // don't double-trigger via the panel's click handler
+  downloadAndLoadIndex();
+});
 
 indexRetry.addEventListener("click", (e) => {
   e.stopPropagation(); // don't trigger the panel's click handler
@@ -663,7 +686,9 @@ function readAllEntries(reader) {
 // entered the final directory drops the "--"; see uploadDirName.) The real value
 // is captured when the upload actually starts.
 function tickNamePrefix() {
-  namePrefixEl.textContent = `${timestampPrefix()}--`;
+  // Once an upload has committed to a name, stop ticking and show exactly the
+  // timestamp it was given, so the field matches what's actually being uploaded.
+  namePrefixEl.textContent = `${frozenPrefix ?? timestampPrefix()}--`;
 }
 tickNamePrefix();
 setInterval(tickNamePrefix, 1000);
@@ -676,10 +701,7 @@ resetBtn.addEventListener("click", () => {
   dirZone.classList.remove("loaded");
 });
 
-uploadBtn.addEventListener("click", () => {
-  if (indexLoaded) uploadAll();
-  else downloadAndLoadIndex(); // no index yet — fetch it instead
-});
+uploadBtn.addEventListener("click", uploadAll);
 
 filterBtn.addEventListener("click", filterOnly);
 
@@ -805,6 +827,12 @@ async function uploadAll() {
     dirPrefix
   );
   if (!items.length) return;
+
+  // Commit to this name: freeze the live-ticking prefix to the timestamp we just
+  // captured and lock the name field, so neither drifts away from what's used.
+  frozenPrefix = timestamp;
+  runNameEl.readOnly = true;
+  tickNamePrefix();
 
   console.log("updeacon: deacon filter params", {
     index: indexFilename,

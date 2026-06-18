@@ -41,11 +41,12 @@
   .index-status { border: 1px solid #ddd; background: #fff; padding: 1rem; margin-bottom: 1rem; transition: all 0.2s; text-align: center; }
   .index-status input { display: none; }
   .index-status .filename { color: #333; }
+  .index-status .filename:empty { display: none; }
   .index-status progress { width: 100%; margin-top: 0.5rem; }
   .index-status .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
   .index-status .idx-info:empty { display: none; }
   .index-status .index-actions { display: flex; gap: 0.8rem; justify-content: center; }
-  .index-status button { margin-top: 0.6rem; padding: 0.4rem 1rem; font-size: 0.85rem; }
+  .index-status button { margin-bottom: 0.6rem; padding: 0.4rem 1rem; font-size: 0.85rem; }
   .index-status.loaded { border-color: #4caf50; background: #f0fff0; }
   .index-status.needs-download, .index-status.failed { border-width: 2px; border-style: dashed; cursor: pointer; }
   .index-status.needs-download { border-color: #aaa; }
@@ -56,14 +57,19 @@
   /* Primary (filled purple) */
   button { background: #936dd0; color: #fff; border: 1px solid transparent; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: all 0.15s; }
   button:hover:not(:disabled) { background: #835dc1; }
+  /* Action buttons are greyed out while inactive, then fill purple once their
+     required fields are satisfied. */
   button:disabled { background: #ececec; color: #aaa; border-color: transparent; cursor: not-allowed; }
-  /* Secondary (outlined): Filter only = purple, Reset = grey */
-  #filter-btn, #reset-btn { background: #fff; }
-  #filter-btn { color: #713da7; border-color: #c7b3e8; }
-  #filter-btn:hover:not(:disabled) { background: #f6effd; border-color: #936dd0; }
-  #reset-btn { color: #6c757d; border-color: #ced4da; }
+  /* Secondary (outlined): Reset = grey. Filter only uses the filled purple primary style. */
+  #reset-btn { background: #fff; color: #6c757d; border-color: #ced4da; }
   #reset-btn:hover:not(:disabled) { background: #f3f4f5; border-color: #adb5bd; }
-  #filter-btn:disabled, #reset-btn:disabled { background: #fff; color: #ccc; border-color: #e8e8e8; }
+  #reset-btn:disabled { background: #fff; color: #ccc; border-color: #e8e8e8; }
+  /* A brief pulsing glow when a button becomes clickable, to draw the eye. */
+  @keyframes button-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(147, 109, 208, 0); }
+    50%      { box-shadow: 0 0 11px 2px rgba(147, 109, 208, 0.6); }
+  }
+  button.pulse-glow { animation: button-glow 1.3s ease-in-out 3; }
   .progress-wrap { margin-top: 1rem; }
   progress { width: 100%; height: 0.55rem; appearance: none; -webkit-appearance: none; accent-color: #6c757d; border: none; background: #eee; }
   progress[value]::-webkit-progress-bar { background: #eee; }
@@ -91,15 +97,32 @@
 <body>
 <h1>updeacon-s3 <span class="alpha-tag">alpha</span></h1>
 <p class="subtitle">Securely dehost and upload DNA sequences in fasta/fastq format directly to S3 object storage.
-  Runs <a href="https://github.com/bede/deacon">Deacon</a> locally using WebAssembly to remove human sequences prior to upload.</p>
+  Runs <a href="https://github.com/bede/deacon">Deacon</a> using WebAssembly to remove human sequences prior to upload. FASTQ files are uploaded to a timestamped directory prefix in the specified bucket. Nested directory structures are preserved.</p>
 <div class="usage">
   <b>Usage</b>
   <ol>
     <li>Enter S3-compatible object storage credentials.</li>
     <li>Press 'download index' to fetch a human Deacon index. You should only need to do this once. Alternatively, drag & drop a copy of the <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61.idx">panhuman-1 index</a>.</li>
     <li>Drag &amp; drop a directory containing FASTQ/FASTA sequences you wish to upload.</li>
-    <li>Press 'Filter &amp; upload' and await completion, or 'Filter only' to save filtered files locally without uploading.</li>
+    <li>Press either 'Filter & upload' or 'Filter only'.</li>
   </ol>
+</div>
+
+<div class="index-status" id="index-status">
+  <input type="file" id="index-input" accept=".idx">
+  <div class="index-actions">
+    <button id="index-download" type="button" hidden>Download index panhuman-1 (850MB)</button>
+    <button id="index-retry" type="button" hidden>Retry download</button>
+  </div>
+  <div class="filename" id="index-name">Index</div>
+  <progress id="index-progress" value="0" max="100" style="display:none"></progress>
+  <div class="idx-info" id="index-info"></div>
+</div>
+
+<div class="drop-zone" id="dir-zone">
+  <input type="file" id="dir-input" webkitdirectory directory multiple>
+  <div class="label">Drop a directory of fasta/fastq[.gz] files, or click to select</div>
+  <div class="summary" id="dir-summary"></div>
 </div>
 
 <div class="field-row">
@@ -130,22 +153,6 @@
     <span class="name-prefix" id="name-prefix"></span>
     <input type="text" id="run-name" autocomplete="off" spellcheck="false" placeholder="name">
   </div>
-</div>
-
-<div class="index-status" id="index-status">
-  <input type="file" id="index-input" accept=".idx">
-  <div class="filename" id="index-name">Index</div>
-  <progress id="index-progress" value="0" max="100" style="display:none"></progress>
-  <div class="idx-info" id="index-info"></div>
-  <div class="index-actions">
-    <button id="index-retry" type="button" hidden>Retry download</button>
-  </div>
-</div>
-
-<div class="drop-zone" id="dir-zone">
-  <input type="file" id="dir-input" webkitdirectory directory multiple>
-  <div class="label">Drop a directory of fasta/fastq[.gz] files, or click to select</div>
-  <div class="summary" id="dir-summary"></div>
 </div>
 
 <div class="actions">
