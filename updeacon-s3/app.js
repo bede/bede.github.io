@@ -19,7 +19,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "2671281";
+const BUILD_COMMIT = "b5b9f7b";
 
 console.log(`updeacon: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
 
@@ -81,6 +81,7 @@ let selectedFiles = []; // { file, key } entries, sequence files only
 let fileRows = []; // { li, st } DOM rows, one per selected file (same order)
 let totalBytes = 0;
 let isUploading = false;
+let uploadCompleted = false; // a Filter & upload finished; lock the action buttons until a new selection
 let frozenPrefix = null; // once an upload commits, the timestamp it was given
 let indexLoaded = false;
 let indexFilename = ""; // name of the loaded .idx (recorded in summaries)
@@ -147,7 +148,7 @@ function updateUploadEnabled() {
   // Downloading the index is handled by the "Download index" button inside the
   // index panel, so the action buttons here just stay disabled until an index is
   // loaded (and the "Filter only" button needs files too).
-  if (!indexLoaded) {
+  if (!indexLoaded || uploadCompleted) {
     setButtonDisabled(uploadBtn, true);
     setButtonDisabled(filterBtn, true);
     return;
@@ -182,6 +183,8 @@ function buildFileList(files, timestamp) {
 }
 
 function setSelection(files) {
+  // A fresh selection clears the post-upload lock so the buttons can re-enable.
+  uploadCompleted = false;
   // `files` here is just for display/count; keys are finalised at upload time
   // so the timestamp reflects when the upload actually starts.
   const seqs = files.filter((f) => SEQ_RE.test(f.name));
@@ -960,6 +963,7 @@ async function uploadAll() {
     dehostProgress.value = 100;
     dehostLabel.textContent = `Processed ${humanBases(totalBasesIn)} of input across ${completed} file${completed === 1 ? "" : "s"}.`;
     setStatus(`Upload complete (${dirPrefix})`, "success");
+    uploadCompleted = true; // lock the action buttons until a new selection is made
   } catch (err) {
     const idx = completed; // the file that failed
     if (inFileLoop && rows[idx]) {
