@@ -19,7 +19,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "b5b9f7b";
+const BUILD_COMMIT = "51376ce";
 
 console.log(`updeacon: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
 
@@ -878,19 +878,43 @@ async function uploadAll() {
   let completed = 0;
   let inFileLoop = false;
   try {
-    // Write a marker object recording the uploader's access key ID into the
-    // timestamped directory before any sequence files. Doubles as an early
-    // CORS/credentials check before the (potentially large) uploads start.
-    setStatus(`Creating ${dirPrefix}/access_key_id …`);
-    await new Upload({
-      client,
-      params: {
-        Bucket: bucket,
-        Key: `${dirPrefix}/access_key_id`,
-        Body: new Blob([accessKeyId], { type: "text/plain" }),
-        ContentType: "text/plain",
-      },
-    }).done();
+    // CORS probe. RGW sends the CORS header on an anonymous 403 but not a
+    // bad-signature one, so this resolves iff CORS works. No headers (preflight).
+    setStatus("Checking connection …");
+    let corsOk = false;
+    try {
+      await fetch(`${endpoint}/${bucket}`, {
+        method: "GET",
+        credentials: "omit",
+        cache: "no-store",
+      });
+      corsOk = true;
+    } catch (_) {
+      corsOk = false;
+    }
+    if (!corsOk) {
+      const e = new Error("Can't reach the object store from this page.");
+      e.updeaconCause = "cors";
+      throw e;
+    }
+
+    // Credential check (also writes the access-key-id marker). CORS is proven,
+    // so any failure here is the credentials.
+    setStatus(`Checking credentials …`);
+    try {
+      await new Upload({
+        client,
+        params: {
+          Bucket: bucket,
+          Key: `${dirPrefix}/access_key_id`,
+          Body: new Blob([accessKeyId], { type: "text/plain" }),
+          ContentType: "text/plain",
+        },
+      }).done();
+    } catch (err) {
+      err.updeaconCause = "credentials";
+      throw err;
+    }
 
     inFileLoop = true;
     setStatus(`Filtering and uploading to ${dirPrefix}`);
@@ -1028,22 +1052,32 @@ function buildSummary({ file, key, stats, elapsed }) {
 function formatError(err) {
   const name = err?.name || "Error";
   const msg = err?.message || String(err);
-  // The overwhelmingly common browser-upload failure is a missing/incorrect
-  // CORS policy on the bucket; surface a hint rather than a bare network error.
+  // Preflight tags the cause definitively (see uploadAll).
+  if (err?.updeaconCause === "credentials") {
+    return (
+      `Authentication failed. Check S3 credentials and try again.`
+    );
+  }
+  if (err?.updeaconCause === "cors") {
+    return (
+      `Connection failed. Couldn't reach the object store from this page. The ` +
+      `bucket must allow PUT/POST from this origin and expose the ETag header.`
+    );
+  }
+  // Worker fetch() classically throws TypeError on network/CORS failures, exact errr msg varies by browser
   if (
     name === "TypeError" ||
     /CORS|Failed to fetch|NetworkError|Load failed/i.test(msg)
   ) {
     return (
-      `Upload failed: ${msg}\n\n` +
-      `This is usually a CORS or network issue. The bucket must allow PUT/POST ` +
-      `from this origin and expose the ETag header — see the README.`
+      `${msg}. Check bucket CORS policy. The bucket must allow ` +
+      `PUT/POST from this origin and expose the ETag header.`
     );
   }
   if (/AccessDenied|InvalidAccessKeyId|SignatureDoesNotMatch|403/i.test(name + msg)) {
-    return `Upload failed (authentication/authorisation): ${name}: ${msg}\n\nCheck the access key, secret key, and bucket permissions.`;
+    return `${name}. Check the access key, secret key, and bucket permissions.`;
   }
-  return `Upload failed: ${name}: ${msg}`;
+  return `${name}. ${msg}`;
 }
 
 // --- Startup -----------------------------------------------------------------
