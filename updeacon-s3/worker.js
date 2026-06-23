@@ -1,4 +1,4 @@
-import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=20260617-1";
+import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=20260623-202559";
 
 // Web Worker for off-main-thread WASM dehosting (deacon filtering).
 //
@@ -8,8 +8,17 @@ import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=20260617-1";
 // memory stays bounded to roughly one batch + one in-flight upload part.
 let wasm = null;
 let index = null;
-const ASSET_VERSION = "20260617-1";
+const ASSET_VERSION = "20260623-202559";
 const OUTPUT_BATCH_BYTES = 4 * 1024 * 1024; // 4 MiB
+
+// wasm-bindgen throws errors from `Result<_, JsValue>` as plain strings (via
+// JsValue::from_str), which have no `.message`. Reading `err.message` blindly
+// turns those into "undefined", hiding the real reason — so normalise here.
+function errText(err) {
+  if (err == null) return "Unknown error";
+  if (typeof err === "string") return err;
+  return err.message || String(err);
+}
 
 // Per-file filtering state, set up by MSG.FILTER and drained by MSG.PULL.
 let active = null;
@@ -146,7 +155,7 @@ self.onmessage = async function (e) {
       wasm = mod;
       self.postMessage({ type: MSG.READY });
     } catch (err) {
-      self.postMessage({ type: MSG.ERROR, message: "Failed to initialize WASM: " + err.message });
+      self.postMessage({ type: MSG.ERROR, message: "Failed to initialize WASM: " + errText(err) });
     }
     return;
   }
@@ -156,7 +165,9 @@ self.onmessage = async function (e) {
       index = new wasm.WasmIndex(new Uint8Array(data));
       self.postMessage({ type: MSG.INDEX_LOADED, info: index.info() });
     } catch (err) {
-      self.postMessage({ type: MSG.ERROR, message: "Failed to load index: " + err.message });
+      // The wasm error already carries a "Failed to load index: …" prefix, so
+      // surface it as-is rather than double-prefixing.
+      self.postMessage({ type: MSG.ERROR, message: errText(err) });
     }
     return;
   }
@@ -173,7 +184,7 @@ self.onmessage = async function (e) {
       disposeActive();
       startFilter(data.file);
     } catch (err) {
-      self.postMessage({ type: MSG.ERROR, message: "Filtering failed: " + err.message });
+      self.postMessage({ type: MSG.ERROR, message: "Filtering failed: " + errText(err) });
     }
     return;
   }
@@ -187,7 +198,7 @@ self.onmessage = async function (e) {
       await pump();
     } catch (err) {
       disposeActive();
-      self.postMessage({ type: MSG.ERROR, message: "Filtering failed: " + err.message });
+      self.postMessage({ type: MSG.ERROR, message: "Filtering failed: " + errText(err) });
     }
     return;
   }

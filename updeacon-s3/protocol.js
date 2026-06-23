@@ -30,3 +30,5 @@ export const FILTER_DEFAULTS = Object.freeze({
 // Version of the `deacon` crate the bundled WASM (pkg/) was built from. Bump this
 // when regenerating pkg/ so the JSON summaries report the right version.
 export const DEACON_VERSION = "deacon 0.15.0";
+
+export const UPDEACON_VERSION = "0.1.0";

@@ -8,7 +8,7 @@
 // never leave the machine. The AWS SDK is vendored locally as a single bundled
 // module (vendor/aws-sdk.js) so the page has no runtime CDN dependency.
 import { S3Client, Upload } from "./vendor/aws-sdk.js";
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=20260617-1";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=20260623-202559";
 
 // --- Fixed configuration -----------------------------------------------------
 // CLIMB uses Ceph RADOS Gateway (S3-compatible), not real AWS, so:
@@ -19,11 +19,11 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "51376ce";
+const BUILD_COMMIT = "a4564e2";
 
-console.log(`updeacon: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
+console.log(`updeacon ${UPDEACON_VERSION}: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
 
-const ASSET_VERSION = "20260617-1";
+const ASSET_VERSION = "20260623-202559";
 
 // Matches fastq/fasta sequence files, optionally .gz compressed (fq/fa short
 // forms included).
@@ -1018,6 +1018,7 @@ function buildSummary({ file, key, stats, elapsed }) {
   const rate = (n) => (t > 0 ? Math.round(n / t) : 0);
   return {
     version: DEACON_VERSION,
+    updeacon_version: UPDEACON_VERSION,
     index: indexFilename,
     input: file.webkitRelativePath || file.name,
     input2: null,
