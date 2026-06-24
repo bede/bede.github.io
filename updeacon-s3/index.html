@@ -11,7 +11,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Roboto Flex', system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; padding: 2rem; max-width: 720px; margin: 0 auto; }
   h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-  .alpha-tag { color: #713da7; font-size: 0.5em; font-weight: 400; vertical-align: super; }
+  .beta-tag { color: #713da7; font-size: 0.5em; font-weight: 400; vertical-align: super; }
   .subtitle { color: #666; margin-bottom: 0.75rem; font-size: 0.9rem; }
   .usage { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; }
   .usage ol { margin: 0.3rem 0 0; padding-left: 1.4rem; }
@@ -45,6 +45,11 @@
   .index-status progress { width: 100%; margin-top: 0.5rem; }
   .index-status .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
   .index-status .idx-info:empty { display: none; }
+  /* Animated trailing dots for indeterminate "Loading…" states. The ::after
+     content cycles 0–3 dots so the panel shows activity while the worker parses
+     the index. A fixed-width inline-block keeps the label from shifting. */
+  .idx-info.loading-dots::after { content: ""; display: inline-block; width: 1.2em; text-align: left; animation: loading-dots 1.2s steps(4, end) infinite; }
+  @keyframes loading-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75%, 100% { content: "..."; } }
   .index-status .index-actions { display: flex; gap: 0.8rem; justify-content: center; }
   .index-status button { margin-bottom: 0.6rem; padding: 0.4rem 1rem; font-size: 0.85rem; }
   .index-status.loaded { border-color: #4caf50; background: #f0fff0; }
@@ -95,14 +100,14 @@
 </style>
 </head>
 <body>
-<h1>updeacon-s3 <span class="alpha-tag">alpha</span></h1>
+<h1>updeacon-s3 <span class="beta-tag">alpha</span></h1>
 <p class="subtitle">Securely dehost and upload DNA sequences in fasta/fastq format directly to S3 object storage.
   Runs <a href="https://github.com/bede/deacon">Deacon</a> in the browser to deplete human sequences prior to upload. FASTQ files are uploaded to a timestamped directory prefix in the specified bucket. Nested directory structures are preserved.</p>
 <div class="usage">
   <b>Usage</b>
   <ol>
-    <li>Press 'Download index' to fetch the human Deacon index. You should only need to do this once. Alternatively, drag & drop a copy of <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61.idx">panhuman-1</a>.</li>
-    <li>Drag &amp; drop fastq/fasta files you wish to upload, or a directory containing fastq files</li>
+    <li>Press 'Download index' to fetch &amp; cache the index. Alternatively, drag & drop a copy of <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx">panhuman-1</a>.</li>
+    <li>Drag  drop fastq/fasta files you wish to upload, or a directory containing fastq files. Paired reads are not currently supported.</li>
     <li>Enter S3-compatible object storage credentials and choose a descriptive name for your upload.</li>
     <li>Press either 'Filter & upload' or 'Filter only', and keep the browser open until completion.</li>
   </ol>
@@ -111,7 +116,7 @@
 <div class="index-status" id="index-status">
   <input type="file" id="index-input" accept=".idx,.pidx">
   <div class="index-actions">
-    <button id="index-download" type="button" hidden>Download index panhuman-1 (850MB)</button>
+    <button id="index-download" type="button" hidden>Download index panhuman-1 (1.3GB)</button>
     <button id="index-retry" type="button" hidden>Retry download</button>
   </div>
   <div class="filename" id="index-name">Index</div>
@@ -121,7 +126,7 @@
 
 <div class="drop-zone" id="dir-zone">
   <input type="file" id="dir-input" webkitdirectory directory multiple>
-  <div class="label">Drop a directory of fasta/fastq[.gz] files, or click to select</div>
+  <div class="label">Drop a directory of fasta/fastq[.gz] files, or click to select.</div>
   <div class="summary" id="dir-summary"></div>
 </div>
 

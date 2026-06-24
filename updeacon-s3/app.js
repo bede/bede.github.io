@@ -8,7 +8,7 @@
 // never leave the machine. The AWS SDK is vendored locally as a single bundled
 // module (vendor/aws-sdk.js) so the page has no runtime CDN dependency.
 import { S3Client, Upload } from "./vendor/aws-sdk.js";
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=20260623-202559";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=20260624-191102";
 
 // --- Fixed configuration -----------------------------------------------------
 // CLIMB uses Ceph RADOS Gateway (S3-compatible), not real AWS, so:
@@ -19,11 +19,11 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "fb32f69";
+const BUILD_COMMIT = "e32389d";
 
 console.log(`updeacon ${UPDEACON_VERSION}: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
 
-const ASSET_VERSION = "20260623-202559";
+const ASSET_VERSION = "20260624-191102";
 
 // Matches fastq/fasta sequence files, optionally .gz compressed (fq/fa short
 // forms included).
@@ -34,13 +34,13 @@ const PART_SIZE = 8 * 1024 * 1024;
 const QUEUE_SIZE = 4;
 
 // Largest index we'll try to load into browser memory.
-const MAX_INDEX_BYTES = 1024 * 1024 * 1024; // 1 GB
+const MAX_INDEX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 
 // Recommended index, downloaded and cached automatically on first visit. The
 // manual drop zone below is only a fallback for when this download fails.
 const INDEX_URL =
-  "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61.idx";
-const INDEX_FILENAME = "panhuman-1.k31w61.idx";
+  "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx";
+const INDEX_FILENAME = "panhuman-1.k31w21.pidx";
 const INDEX_DISPLAY_NAME = "Index: panhuman-1"; // shown in the panel; filename is kept for summaries
 
 // --- DOM ---------------------------------------------------------------------
@@ -257,6 +257,7 @@ worker.onmessage = (e) => {
       indexProgress.style.display = "none";
       indexRetry.hidden = true;
       indexDownload.hidden = true;
+      clearIndexLoading();
       indexInfo.textContent = m.info;
       // info looks like "k=31, w=61 (12,345 minimizers)" — pull out k and w for
       // the per-file JSON summaries.
@@ -276,6 +277,7 @@ worker.onmessage = (e) => {
     case MSG.ERROR:
       if (onWorkerError) onWorkerError(m.message);
       else {
+        clearIndexLoading();
         indexInfo.textContent = "";
         setStatus("Error: " + m.message, "error");
       }
@@ -373,7 +375,7 @@ async function loadIndexFile(file) {
   indexDownload.hidden = true;
   updateUploadEnabled();
   indexName.textContent = file.name;
-  indexInfo.textContent = "Loading…";
+  showIndexLoading("Loading");
   setStatus(`Loading index (${(file.size / 1024 / 1024).toFixed(0)}MB)…`);
   const buf = await file.arrayBuffer();
   sendIndexToWorker(buf);
@@ -442,6 +444,37 @@ async function clearCachedIndex(url) {
   }
 }
 
+// Delete cached blobs for any index other than `keepUrl`. Entries are keyed by
+// URL, so when the recommended index changes (e.g. a new panhuman release) the
+// previous blob would otherwise linger in IndexedDB forever, wasting hundreds of
+// MB. Called on startup to garbage-collect stale indexes.
+async function pruneStaleIndexes(keepUrl) {
+  const db = await openIdxDB();
+  try {
+    const store = db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE);
+    const keys = await idbRequest(() => store.getAllKeys());
+    await Promise.all(
+      keys
+        .filter((key) => key !== keepUrl)
+        .map((key) => idbRequest(() => store.delete(key)))
+    );
+  } finally {
+    db.close();
+  }
+}
+
+// Show an indeterminate "loading" message in the index panel. The trailing dots
+// are animated by CSS (.loading-dots) while the worker parses the index; the
+// class is cleared once it reports loaded or fails.
+function showIndexLoading(label) {
+  indexInfo.textContent = label;
+  indexInfo.classList.add("loading-dots");
+}
+
+function clearIndexLoading() {
+  indexInfo.classList.remove("loading-dots");
+}
+
 // Hand index bytes to the worker, or stash them until the worker reports READY.
 function sendIndexToWorker(arrayBuffer) {
   if (workerReady) {
@@ -471,6 +504,7 @@ async function downloadIndex(url, onProgress) {
 }
 
 function showIndexProgress(received, total) {
+  clearIndexLoading();
   indexProgress.style.display = "";
   if (total) {
     const pct = (received / total) * 100;
@@ -488,6 +522,7 @@ function showIndexProgress(received, total) {
 function showIndexNeedsDownload() {
   indexNeedsDownload = true;
   indexFailed = false;
+  clearIndexLoading();
   indexProgress.style.display = "none";
   indexRetry.hidden = true;
   indexDownload.hidden = false;
@@ -496,7 +531,7 @@ function showIndexNeedsDownload() {
   indexDownload.classList.add("pulse-glow");
   indexName.textContent = ""; // the "Download panhuman-1 index" button stands in for the title here
   indexInfo.textContent =
-    "No Deacon index cached. Click to download or drag/drop local .idx file.";
+    "No Deacon index cached. Click to download or drop an .idx/.pidx file.";
   indexStatus.classList.remove("loaded", "failed");
   indexStatus.classList.add("needs-download");
   setStatus("");
@@ -510,11 +545,12 @@ function showIndexFailure(err) {
   console.error(err);
   indexFailed = true;
   indexNeedsDownload = false;
+  clearIndexLoading();
   indexProgress.style.display = "none";
   indexName.textContent = INDEX_DISPLAY_NAME;
   indexInfo.textContent =
     `Download failed (${err?.message || err}). ` +
-    "Click to select a local .idx, drag one here, or retry.";
+    "Click to select a local .idx/.pidx file, drag one here, or retry.";
   indexRetry.hidden = false;
   indexDownload.hidden = true;
   indexStatus.classList.remove("loaded", "needs-download");
@@ -533,10 +569,14 @@ async function initIndex() {
   indexRetry.hidden = true;
   indexDownload.hidden = true;
   indexStatus.classList.remove("failed", "needs-download", "loaded", "dragover");
+  // Drop any previously cached index that is no longer the recommended one.
+  pruneStaleIndexes(INDEX_URL).catch((e) =>
+    console.warn("updeacon: failed to prune stale cached indexes", e)
+  );
   try {
     const cached = await getCachedIndex(INDEX_URL);
     if (cached) {
-      indexInfo.textContent = "Loading cached index…";
+      showIndexLoading("Loading cached index");
       setStatus("Loading cached index…");
       sendIndexToWorker(await cached.arrayBuffer());
       return;
@@ -566,7 +606,7 @@ async function downloadAndLoadIndex() {
       console.warn("updeacon: failed to cache index", e)
     );
     indexProgress.style.display = "none";
-    indexInfo.textContent = "Loading index…";
+    showIndexLoading("Loading index");
     setStatus("Loading index…");
     sendIndexToWorker(await blob.arrayBuffer());
   } catch (err) {

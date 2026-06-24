@@ -1,4 +1,4 @@
-import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=20260623-202559";
+import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=20260624-191102";
 
 // Web Worker for off-main-thread WASM dehosting (deacon filtering).
 //
@@ -8,7 +8,7 @@ import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=20260623-202559";
 // memory stays bounded to roughly one batch + one in-flight upload part.
 let wasm = null;
 let index = null;
-const ASSET_VERSION = "20260623-202559";
+const ASSET_VERSION = "20260624-191102";
 const OUTPUT_BATCH_BYTES = 4 * 1024 * 1024; // 4 MiB
 
 // wasm-bindgen throws errors from `Result<_, JsValue>` as plain strings (via
