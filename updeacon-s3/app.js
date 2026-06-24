@@ -19,7 +19,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "a4564e2";
+const BUILD_COMMIT = "fb32f69";
 
 console.log(`updeacon ${UPDEACON_VERSION}: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
 
@@ -877,6 +877,7 @@ async function uploadAll() {
 
   let completed = 0;
   let inFileLoop = false;
+  const uploadedKeys = []; // every object written, in upload order (manifest contents)
   try {
     // CORS probe. RGW sends the CORS header on an anonymous 403 but not a
     // bad-signature one, so this resolves iff CORS works. No headers (preflight).
@@ -898,15 +899,14 @@ async function uploadAll() {
       throw e;
     }
 
-    // Credential check (also writes the access-key-id marker). CORS is proven,
-    // so any failure here is the credentials.
+    // Credential check (also writes the _ACCESS_KEY_ID.txt marker). CORS is checked, so any failure here is the credentials.
     setStatus(`Checking credentials …`);
     try {
       await new Upload({
         client,
         params: {
           Bucket: bucket,
-          Key: `${dirPrefix}/access_key_id`,
+          Key: `${dirPrefix}/_ACCESS_KEY_ID.txt`,
           Body: new Blob([accessKeyId], { type: "text/plain" }),
           ContentType: "text/plain",
         },
@@ -960,6 +960,7 @@ async function uploadAll() {
       });
 
       await up.done();
+      uploadedKeys.push(key);
 
       // Upload a Deacon-style JSON summary alongside the dehosted file.
       const summary = buildSummary({ file, key, stats: fileStats, elapsed: fileElapsed });
@@ -972,6 +973,7 @@ async function uploadAll() {
           ContentType: "application/json",
         },
       }).done();
+      uploadedKeys.push(`${key}.deacon.json`);
 
       dehostedBefore += file.size;
       totalBasesIn += Number(fileStats?.basesIn || 0);
@@ -986,6 +988,19 @@ async function uploadAll() {
 
     dehostProgress.value = 100;
     dehostLabel.textContent = `Processed ${humanBases(totalBasesIn)} of input across ${completed} file${completed === 1 ? "" : "s"}.`;
+
+    // Write the file manifest *last*, signalling upload completion
+    setStatus("Finalising (writing manifest) …");
+    await new Upload({
+      client,
+      params: {
+        Bucket: bucket,
+        Key: `${dirPrefix}/_MANIFEST.txt`,
+        Body: new Blob([uploadedKeys.join("\n") + "\n"], { type: "text/plain" }),
+        ContentType: "text/plain",
+      },
+    }).done();
+
     setStatus(`Upload complete (${dirPrefix})`, "success");
     uploadCompleted = true; // lock the action buttons until a new selection is made
   } catch (err) {
