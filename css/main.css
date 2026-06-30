@@ -64,10 +64,16 @@ html.dark {
 /* ------------------------------------------------------------------------------------------- */
 
 * { margin:0; padding:0; font-family:inherit; }
+/* Paint the page background on the root so the full viewport (including the
+   margins outside the 720px body) and the body switch as one surface. */
+html {
+  background-color: var(--bg);
+  transition: background-color 160ms ease;
+}
 body {
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
-  transition: background-color 160ms ease, color 160ms ease;
+  transition: color 160ms ease;
   font-family: Inconsolata, Consolas, "Liberation Mono", Menlo, Courier, monospace;
   font-size:16px;
   line-height:1.5;
@@ -278,7 +284,6 @@ header * {
 /* ------------------------------------------------------------------------------------------- */
 /* main content */
 div.content {
-  background:var(--bg);
   margin-top: 0;
   margin-bottom: 60px;
 }
