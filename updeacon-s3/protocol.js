@@ -17,18 +17,17 @@ export const STAGE = Object.freeze({
   FINALIZING: "finalizing",
 });
 
-// Deacon filter parameters — deplete mode with the panhuman defaults. Shared by
-// the worker (which configures the WASM session) and the main thread (which
-// records them in each file's JSON summary), so they stay in lockstep.
+// Deacon filter params (deplete mode, panhuman defaults); shared by worker and main thread
 export const FILTER_DEFAULTS = Object.freeze({
   deplete: true,
   absThreshold: 2,
   relThreshold: 0.05,
   prefixLength: 0,
+  rename: false,
+  outputFasta: false,
 });
 
-// Version of the `deacon` crate the bundled WASM (pkg/) was built from. Bump this
-// when regenerating pkg/ so the JSON summaries report the right version.
+// deacon crate version the bundled WASM was built from; bump when regenerating pkg/
 export const DEACON_VERSION = "deacon 0.15.0";
 
 export const UPDEACON_VERSION = "0.2.0";

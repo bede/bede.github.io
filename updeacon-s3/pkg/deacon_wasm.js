@@ -1,21 +1,21 @@
 /* @ts-self-types="./deacon_wasm.d.ts" */
 
-export class WasmFilterSession {
+export class FilterSession {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
         this.__wbg_ptr = 0;
-        WasmFilterSessionFinalization.unregister(this);
+        FilterSessionFinalization.unregister(this);
         return ptr;
     }
     free() {
         const ptr = this.__destroy_into_raw();
-        wasm.__wbg_wasmfiltersession_free(ptr, 0);
+        wasm.__wbg_filtersession_free(ptr, 0);
     }
     /**
      * @returns {Uint8Array}
      */
     finish() {
-        const ret = wasm.wasmfiltersession_finish(this.__wbg_ptr);
+        const ret = wasm.filtersession_finish(this.__wbg_ptr);
         if (ret[3]) {
             throw takeFromExternrefTable0(ret[2]);
         }
@@ -30,26 +30,28 @@ export class WasmFilterSession {
      * @param {number} rel_threshold
      * @param {boolean} decompress_input
      * @param {boolean} compress_output
+     * @param {boolean} rename
+     * @param {boolean} output_fasta
      */
-    constructor(index, deplete, abs_threshold, rel_threshold, decompress_input, compress_output) {
+    constructor(index, deplete, abs_threshold, rel_threshold, decompress_input, compress_output, rename, output_fasta) {
         _assertClass(index, WasmIndex);
-        const ret = wasm.wasmfiltersession_new(index.__wbg_ptr, deplete, abs_threshold, rel_threshold, decompress_input, compress_output);
+        const ret = wasm.filtersession_new(index.__wbg_ptr, deplete, abs_threshold, rel_threshold, decompress_input, compress_output, rename, output_fasta);
         this.__wbg_ptr = ret >>> 0;
-        WasmFilterSessionFinalization.register(this, this.__wbg_ptr, this);
+        FilterSessionFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
     /**
      * @returns {boolean}
      */
     output_compressed() {
-        const ret = wasm.wasmfiltersession_output_compressed(this.__wbg_ptr);
+        const ret = wasm.filtersession_output_compressed(this.__wbg_ptr);
         return ret !== 0;
     }
     /**
      * @returns {number}
      */
     pending_bytes() {
-        const ret = wasm.wasmfiltersession_pending_bytes(this.__wbg_ptr);
+        const ret = wasm.filtersession_pending_bytes(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
@@ -59,7 +61,7 @@ export class WasmFilterSession {
     push_chunk(chunk) {
         const ptr0 = passArray8ToWasm0(chunk, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmfiltersession_push_chunk(this.__wbg_ptr, ptr0, len0);
+        const ret = wasm.filtersession_push_chunk(this.__wbg_ptr, ptr0, len0);
         if (ret[3]) {
             throw takeFromExternrefTable0(ret[2]);
         }
@@ -71,14 +73,103 @@ export class WasmFilterSession {
      * @returns {any}
      */
     stats() {
-        const ret = wasm.wasmfiltersession_stats(this.__wbg_ptr);
+        const ret = wasm.filtersession_stats(this.__wbg_ptr);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
         return takeFromExternrefTable0(ret[0]);
     }
 }
-if (Symbol.dispose) WasmFilterSession.prototype[Symbol.dispose] = WasmFilterSession.prototype.free;
+if (Symbol.dispose) FilterSession.prototype[Symbol.dispose] = FilterSession.prototype.free;
+
+export class PairedFilterSession {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        PairedFilterSessionFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_pairedfiltersession_free(ptr, 0);
+    }
+    /**
+     * @returns {any}
+     */
+    finish_r1() {
+        const ret = wasm.pairedfiltersession_finish_r1(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {any}
+     */
+    finish_r2() {
+        const ret = wasm.pairedfiltersession_finish_r2(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {WasmIndex} index
+     * @param {boolean} deplete
+     * @param {number} abs_threshold
+     * @param {number} rel_threshold
+     * @param {boolean} decompress_r1
+     * @param {boolean} decompress_r2
+     * @param {boolean} compress_r1
+     * @param {boolean} compress_r2
+     * @param {boolean} rename
+     * @param {boolean} output_fasta
+     */
+    constructor(index, deplete, abs_threshold, rel_threshold, decompress_r1, decompress_r2, compress_r1, compress_r2, rename, output_fasta) {
+        _assertClass(index, WasmIndex);
+        const ret = wasm.pairedfiltersession_new(index.__wbg_ptr, deplete, abs_threshold, rel_threshold, decompress_r1, decompress_r2, compress_r1, compress_r2, rename, output_fasta);
+        this.__wbg_ptr = ret >>> 0;
+        PairedFilterSessionFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @param {Uint8Array} chunk
+     * @returns {any}
+     */
+    push_r1(chunk) {
+        const ptr0 = passArray8ToWasm0(chunk, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.pairedfiltersession_push_r1(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @param {Uint8Array} chunk
+     * @returns {any}
+     */
+    push_r2(chunk) {
+        const ptr0 = passArray8ToWasm0(chunk, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.pairedfiltersession_push_r2(this.__wbg_ptr, ptr0, len0);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * @returns {any}
+     */
+    stats() {
+        const ret = wasm.pairedfiltersession_stats(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+}
+if (Symbol.dispose) PairedFilterSession.prototype[Symbol.dispose] = PairedFilterSession.prototype.free;
 
 export class WasmIndex {
     __destroy_into_raw() {
@@ -148,6 +239,10 @@ function __wbg_get_imports() {
             const ret = new Object();
             return ret;
         },
+        __wbg_new_from_slice_22da9388ac046e50: function(arg0, arg1) {
+            const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
+            return ret;
+        },
         __wbg_set_7eaa4f96924fd6b3: function() { return handleError(function (arg0, arg1, arg2) {
             const ret = Reflect.set(arg0, arg1, arg2);
             return ret;
@@ -185,9 +280,12 @@ function __wbg_get_imports() {
     };
 }
 
-const WasmFilterSessionFinalization = (typeof FinalizationRegistry === 'undefined')
+const FilterSessionFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_wasmfiltersession_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_filtersession_free(ptr >>> 0, 1));
+const PairedFilterSessionFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_pairedfiltersession_free(ptr >>> 0, 1));
 const WasmIndexFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wasmindex_free(ptr >>> 0, 1));

@@ -6,28 +6,32 @@
 <title>updeacon-s3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&family=Roboto+Flex:opsz@8..144&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Roboto Flex', system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; padding: 2rem; max-width: 720px; margin: 0 auto; }
-  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  :root { --accent: #6d4fd8; --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace; }
+  body { font-family: 'Geist', system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; padding: 2rem; max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; font-weight: 400; margin-bottom: 0.5rem; }
   .beta-tag { color: #713da7; font-size: 0.5em; font-weight: 400; vertical-align: super; }
   .subtitle { color: #666; margin-bottom: 0.75rem; font-size: 0.9rem; }
-  .usage { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; }
-  .usage ol { margin: 0.3rem 0 0; padding-left: 1.4rem; }
-  .usage li { margin-bottom: 0.25rem; }
+  .usage { color: #444; font-size: 0.9rem; margin-bottom: 1.25rem; }
+  .usage ol { list-style: none; counter-reset: step; margin: 0; padding: 0; }
+  .usage li { position: relative; padding-left: 1.9rem; margin-bottom: 0.3rem; line-height: 1.45; }
+  .usage li:last-child { margin-bottom: 0; }
+  /* Mono numerals in place of default list markers. */
+  .usage li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 0.05em; color: #999; font-family: var(--mono); font-size: 0.85rem; }
   .field { margin-bottom: 1rem; }
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
   .field-row .field { margin-bottom: 1rem; }
   .field label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; }
-  .field input { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #ccc; font-family: 'Roboto Mono', monospace; font-size: 0.9rem; }
+  .field input { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #ccc; font-family: var(--mono); font-size: 0.9rem; }
   .field input:focus { outline: none; border-color: #713da7; }
-  .name-input { display: flex; align-items: center; border: 1px solid #ccc; background: #fff; font-family: 'Roboto Mono', monospace; font-size: 0.9rem; }
+  .name-input { display: flex; align-items: center; border: 1px solid #ccc; background: #fff; font-family: var(--mono); font-size: 0.9rem; }
   .name-input:focus-within { border-color: #713da7; }
   .name-input .name-prefix { color: #999; white-space: nowrap; user-select: none; padding: 0.5rem 0 0.5rem 0.6rem; }
   .name-input input { flex: 1; min-width: 0; width: auto; border: none; padding: 0.5rem 0.6rem 0.5rem 0; font: inherit; background: transparent; }
   .name-input input:focus { outline: none; }
-  .drop-zone { border: 2px dashed #aaa; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #fff; margin-bottom: 1rem; }
+  .drop-zone { border: 1px dashed #aaa; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #fff; margin-bottom: 1rem; }
   .drop-zone:hover, .drop-zone.dragover { border-color: #713da7; background: #f6effd; }
   .drop-zone.loaded { border-color: #4caf50; background: #f0fff0; }
   .drop-zone input { display: none; }
@@ -45,15 +49,13 @@
   .index-status progress { width: 100%; margin-top: 0.5rem; }
   .index-status .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
   .index-status .idx-info:empty { display: none; }
-  /* Animated trailing dots for indeterminate "Loading…" states. The ::after
-     content cycles 0–3 dots so the panel shows activity while the worker parses
-     the index. A fixed-width inline-block keeps the label from shifting. */
+  /* Animated trailing dots for "Loading…" states; ::after cycles 0–3 dots, fixed-width so the label doesn't shift. */
   .idx-info.loading-dots::after { content: ""; display: inline-block; width: 1.2em; text-align: left; animation: loading-dots 1.2s steps(4, end) infinite; }
   @keyframes loading-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75%, 100% { content: "..."; } }
   .index-status .index-actions { display: flex; gap: 0.8rem; justify-content: center; }
   .index-status button { margin-bottom: 0.6rem; padding: 0.4rem 1rem; font-size: 0.85rem; }
   .index-status.loaded { border-color: #4caf50; background: #f0fff0; }
-  .index-status.needs-download, .index-status.failed { border-width: 2px; border-style: dashed; cursor: pointer; }
+  .index-status.needs-download, .index-status.failed { border-width: 1px; border-style: dashed; cursor: pointer; }
   .index-status.needs-download { border-color: #aaa; }
   .index-status.failed { border-color: #d8a0a0; }
   .index-status.needs-download:hover, .index-status.needs-download.dragover,
@@ -62,8 +64,7 @@
   /* Primary (filled purple) */
   button { background: #936dd0; color: #fff; border: 1px solid transparent; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: all 0.15s; }
   button:hover:not(:disabled) { background: #835dc1; }
-  /* Action buttons are greyed out while inactive, then fill purple once their
-     required fields are satisfied. */
+  /* Action buttons grey out while inactive, fill purple once their required fields are satisfied. */
   button:disabled { background: #ececec; color: #aaa; border-color: transparent; cursor: not-allowed; }
   /* Secondary (outlined): Reset = grey. Filter only uses the filled purple primary style. */
   #reset-btn { background: #fff; color: #6c757d; border-color: #ced4da; }
@@ -81,7 +82,7 @@
   progress[value]::-webkit-progress-value { background: #6c757d; }
   progress[value]::-moz-progress-bar { background: #6c757d; }
   .progress-label { font-size: 0.85rem; color: #555; margin-top: 0.3rem; }
-  #file-list { list-style: none; margin-top: 0.6rem; font-family: 'Roboto Mono', monospace; font-size: 0.8rem; max-height: 14rem; overflow-y: auto; border: 1px solid #ddd; background: #fff; }
+  #file-list { list-style: none; margin-top: 0.6rem; font-family: var(--mono); font-size: 0.8rem; max-height: 14rem; overflow-y: auto; border: 1px solid #ddd; background: #fff; }
   #file-list li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0.6rem; border-bottom: 1px solid #f0f0f0; }
   #file-list li:last-child { border-bottom: none; }
   #file-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -104,10 +105,9 @@
 <p class="subtitle">Securely dehost and upload DNA sequences in fasta/fastq format directly to S3 object storage.
   Runs <a href="https://github.com/bede/deacon">Deacon</a> in the browser to deplete human sequences prior to upload. FASTQ files are uploaded to a timestamped directory prefix in the specified bucket. Nested directory structures are preserved.</p>
 <div class="usage">
-  <b>Usage</b>
   <ol>
-    <li>Press 'Download index' to fetch &amp; cache the index. Alternatively, drag & drop a copy of <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx">panhuman-1</a>.</li>
-    <li>Drag  drop fastq/fasta files you wish to upload, or a directory containing fastq files. Paired reads are not currently supported.</li>
+    <li>Press 'Download index', else drag & drop a local copy of <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx">panhuman-1</a>.</li>
+    <li>Drag &amp; drop fasta/fastq files you wish to upload, or a directory containing them. Illumina R1/R2 files are paired automatically.</li>
     <li>Enter S3-compatible object storage credentials and choose a descriptive name for your upload.</li>
     <li>Press either 'Filter & upload' or 'Filter only', and keep the browser open until completion.</li>
   </ol>
