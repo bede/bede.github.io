@@ -9,7 +9,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "bac30b8";
+const BUILD_COMMIT = "3a95f2b";
 
 console.log(`updeacon ${UPDEACON_VERSION}: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
 
