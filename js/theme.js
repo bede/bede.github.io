@@ -1,29 +1,24 @@
-document.body.style.backgroundColor = sessionStorage.getItem('bg');
-document.body.style.color = sessionStorage.getItem('cc');
-function theme() {
-     if ( sessionStorage.getItem('bg') === 'rgb(255, 255, 255)') {
-         
-            sessionStorage.setItem('bg', 'rgb(6, 23, 37)');
-            sessionStorage.setItem('cc', '#777');
-            
-         
-     }
-    else if (sessionStorage.getItem('bg') == null || undefined) {
-        sessionStorage.setItem('bg', 'rgb(6, 23, 37)');
-        sessionStorage.setItem('cc', '#777');
-        
-    }
-    else if( sessionStorage.getItem('bg') === 'rgb(6, 23, 37)') {
-        
-        sessionStorage.setItem('bg', 'rgb(255, 255, 255)');
-        sessionStorage.setItem('cc', '#333');
-        
-  
-    }
+// Dark mode toggle. Initial theme is applied by the inline <head> script;
+// this only wires the button and persists the choice to localStorage.
+(function () {
+  var root = document.documentElement;
 
-document.body.style.backgroundColor = sessionStorage.getItem('bg');
-document.body.style.color = sessionStorage.getItem('cc');
+  function apply(dark) {
+    root.classList.toggle('dark', dark);
+    try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch (e) {}
+  }
 
-}
+  var btn = document.querySelector('.theme-toggle');
+  if (btn) {
+    btn.addEventListener('click', function () {
+      apply(!root.classList.contains('dark'));
+    });
+  }
 
-
+  // Follow the OS setting live, but only until the user makes an explicit choice.
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  mq.addEventListener('change', function (e) {
+    try { if (localStorage.getItem('theme')) return; } catch (err) {}
+    root.classList.toggle('dark', e.matches);
+  });
+})();

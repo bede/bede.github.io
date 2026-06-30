@@ -207,3 +207,35 @@
 .highlight {
   background-color: #f8f8f8;
 }
+
+/* ------------------------------------------------------------------------------------------- */
+/* dark syntax overrides */
+html.dark .highlight { background-color: transparent; }
+html.dark .highlight .c, html.dark .highlight .ch, html.dark .highlight .cd,
+html.dark .highlight .cpf, html.dark .highlight .cm, html.dark .highlight .c1,
+html.dark .highlight .cs, html.dark .highlight .cp { color: #8b949e; }
+html.dark .highlight .k, html.dark .highlight .kv, html.dark .highlight .kc,
+html.dark .highlight .kd, html.dark .highlight .kn, html.dark .highlight .kp,
+html.dark .highlight .kr { color: #ff7b72; }
+html.dark .highlight .kt, html.dark .highlight .nc, html.dark .highlight .na,
+html.dark .highlight .no, html.dark .highlight .nv, html.dark .highlight .vc,
+html.dark .highlight .vg, html.dark .highlight .vi, html.dark .highlight .vm,
+html.dark .highlight .nb { color: #79c0ff; }
+html.dark .highlight .m, html.dark .highlight .mb, html.dark .highlight .mx,
+html.dark .highlight .mf, html.dark .highlight .mh, html.dark .highlight .mi,
+html.dark .highlight .mo, html.dark .highlight .il { color: #79c0ff; }
+html.dark .highlight .s, html.dark .highlight .sa, html.dark .highlight .dl,
+html.dark .highlight .sb, html.dark .highlight .sc, html.dark .highlight .sd,
+html.dark .highlight .s1, html.dark .highlight .s2, html.dark .highlight .se,
+html.dark .highlight .sh, html.dark .highlight .si, html.dark .highlight .sx,
+html.dark .highlight .ss, html.dark .highlight .sr { color: #a5d6ff; }
+html.dark .highlight .nf, html.dark .highlight .fm, html.dark .highlight .nl,
+html.dark .highlight .ne, html.dark .highlight .nd { color: #d2a8ff; }
+html.dark .highlight .nt { color: #7ee787; }
+html.dark .highlight .nn, html.dark .highlight .gp, html.dark .highlight .o,
+html.dark .highlight .ow, html.dark .highlight .w { color: #cdd6df; }
+html.dark .highlight .gh, html.dark .highlight .gu { color: #79c0ff; }
+html.dark .highlight .err { color: #ffa198; background-color: transparent; }
+html.dark .highlight .gd { color: #ffa198; background-color: rgba(248,81,73,0.15); }
+html.dark .highlight .gi { color: #7ee787; background-color: rgba(63,185,80,0.15); }
+html.dark .highlight .gr, html.dark .highlight .gt { color: #ffa198; }
