@@ -1,13 +1,14 @@
 // updeacon-check: in-browser host-content check
-import { MSG, DETECT_DEFAULTS } from "./protocol.js?v=20260702-094702";
+import { MSG, DETECT_DEFAULTS } from "./protocol.js?v=20260702-141439";
 import { SEQ_RE, pairSequenceFiles } from "./pairing.js";
 
-const ASSET_VERSION = "20260702-094702";
+const ASSET_VERSION = "20260702-141439";
 
 const INDEX_URL =
   "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61c99.pidx";
 
-const HOST_THRESHOLD = 0.1;
+const WARN_THRESHOLD = 0.01; // >1% host → amber
+const HIGH_THRESHOLD = 0.05; // >5% host → red
 
 // --- DOM ---------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -284,8 +285,13 @@ async function scanGroup(group) {
 }
 
 // --- Result rendering --------------------------------------------------------
-function resultText(results, anyHigh) {
-  const verdict = anyHigh ? "High host content detected" : "Host check passed";
+function tier(maxFrac) {
+  if (maxFrac > HIGH_THRESHOLD) return { cls: "high-host", verdict: "High host content detected" };
+  if (maxFrac > WARN_THRESHOLD) return { cls: "warn", verdict: "Moderate host content detected" };
+  return { cls: "pass", verdict: "Host check passed" };
+}
+
+function resultText(results, verdict) {
   const stat = (r) =>
     `${(r.hostFrac * 100).toFixed(1)}% host (${r.hostReads.toLocaleString()} of ${r.readsIn.toLocaleString()} reads)`;
   if (results.length === 1) return `${verdict}. ${stat(results[0])}`;
@@ -343,9 +349,10 @@ async function handleFiles(files) {
       });
     }
 
-    const anyHigh = results.some((r) => r.hostFrac > HOST_THRESHOLD);
-    const text = resultText(results, anyHigh);
-    setStatus(text, anyHigh ? "high-host" : "success");
+    const maxFrac = Math.max(0, ...results.map((r) => r.hostFrac));
+    const { cls, verdict } = tier(maxFrac);
+    const text = resultText(results, verdict);
+    setStatus(text, cls);
     console.log("updeacon-check:", text);
   } catch (err) {
     console.error(err);

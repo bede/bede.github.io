@@ -199,11 +199,12 @@ export class WasmIndex {
     }
     /**
      * @param {Uint8Array} data
+     * @param {number | null} [complexity_threshold]
      */
-    constructor(data) {
+    constructor(data, complexity_threshold) {
         const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmindex_new(ptr0, len0);
+        const ret = wasm.wasmindex_new(ptr0, len0, isLikeNone(complexity_threshold) ? Number.MAX_SAFE_INTEGER : Math.fround(complexity_threshold));
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -333,6 +334,10 @@ function handleError(f, args) {
         const idx = addToExternrefTable0(e);
         wasm.__wbindgen_exn_store(idx);
     }
+}
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
 }
 
 function passArray8ToWasm0(arg, malloc) {

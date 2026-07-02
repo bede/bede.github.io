@@ -1,6 +1,6 @@
 // Updeacon client fa/fq dehosting & direct-to-s3 upload
 import { S3Client, Upload } from "./vendor/aws-sdk.js";
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=20260702-094702";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=20260702-141439";
 import { SEQ_RE, groupRelativePaths, pairSequenceFiles } from "./pairing.js";
 
 // --- Fixed configuration -----------------------------------------------------
@@ -9,11 +9,11 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "f4bb6c4";
+const BUILD_COMMIT = "d5e2c44";
 
 console.log(`updeacon ${UPDEACON_VERSION}: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
 
-const ASSET_VERSION = "20260702-094702";
+const ASSET_VERSION = "20260702-141439";
 
 const PART_SIZE = 8 * 1024 * 1024;
 const QUEUE_SIZE = 4;
