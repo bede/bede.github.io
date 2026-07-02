@@ -27,6 +27,13 @@ export const FILTER_DEFAULTS = Object.freeze({
   outputFasta: false,
 });
 
+// Host-check thresholds (-a 1 -r 0, deplete): a read is host on a single k-mer hit
+export const DETECT_DEFAULTS = Object.freeze({
+  deplete: true,
+  absThreshold: 1,
+  relThreshold: 0,
+});
+
 // deacon crate version the bundled WASM was built from; bump when regenerating pkg/
 export const DEACON_VERSION = "deacon 0.15.0";
 

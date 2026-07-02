@@ -36,7 +36,7 @@ export class FilterSession {
     constructor(index, deplete, abs_threshold, rel_threshold, decompress_input, compress_output, rename, output_fasta) {
         _assertClass(index, WasmIndex);
         const ret = wasm.filtersession_new(index.__wbg_ptr, deplete, abs_threshold, rel_threshold, decompress_input, compress_output, rename, output_fasta);
-        this.__wbg_ptr = ret >>> 0;
+        this.__wbg_ptr = ret;
         FilterSessionFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -128,7 +128,7 @@ export class PairedFilterSession {
     constructor(index, deplete, abs_threshold, rel_threshold, decompress_r1, decompress_r2, compress_r1, compress_r2, rename, output_fasta) {
         _assertClass(index, WasmIndex);
         const ret = wasm.pairedfiltersession_new(index.__wbg_ptr, deplete, abs_threshold, rel_threshold, decompress_r1, decompress_r2, compress_r1, compress_r2, rename, output_fasta);
-        this.__wbg_ptr = ret >>> 0;
+        this.__wbg_ptr = ret;
         PairedFilterSessionFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -207,17 +207,16 @@ export class WasmIndex {
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
-        this.__wbg_ptr = ret[0] >>> 0;
+        this.__wbg_ptr = ret[0];
         WasmIndexFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
 }
 if (Symbol.dispose) WasmIndex.prototype[Symbol.dispose] = WasmIndex.prototype.free;
-
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
-        __wbg___wbindgen_throw_6ddd609b62940d55: function(arg0, arg1) {
+        __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
         __wbg_error_a6fa202b58aa1cd3: function(arg0, arg1) {
@@ -235,15 +234,15 @@ function __wbg_get_imports() {
             const ret = new Error();
             return ret;
         },
-        __wbg_new_ab79df5bd7c26067: function() {
+        __wbg_new_da52cf8fe3429cb2: function() {
             const ret = new Object();
             return ret;
         },
-        __wbg_new_from_slice_22da9388ac046e50: function(arg0, arg1) {
+        __wbg_new_from_slice_77cdfb7977362f3c: function(arg0, arg1) {
             const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
             return ret;
         },
-        __wbg_set_7eaa4f96924fd6b3: function() { return handleError(function (arg0, arg1, arg2) {
+        __wbg_set_8535240470bf2500: function() { return handleError(function (arg0, arg1, arg2) {
             const ret = Reflect.set(arg0, arg1, arg2);
             return ret;
         }, arguments); },
@@ -282,13 +281,13 @@ function __wbg_get_imports() {
 
 const FilterSessionFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_filtersession_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_filtersession_free(ptr, 1));
 const PairedFilterSessionFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_pairedfiltersession_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_pairedfiltersession_free(ptr, 1));
 const WasmIndexFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_wasmindex_free(ptr >>> 0, 1));
+    : new FinalizationRegistry(ptr => wasm.__wbg_wasmindex_free(ptr, 1));
 
 function addToExternrefTable0(obj) {
     const idx = wasm.__externref_table_alloc();
@@ -316,8 +315,7 @@ function getDataViewMemory0() {
 }
 
 function getStringFromWasm0(ptr, len) {
-    ptr = ptr >>> 0;
-    return decodeText(ptr, len);
+    return decodeText(ptr >>> 0, len);
 }
 
 let cachedUint8ArrayMemory0 = null;
@@ -416,8 +414,9 @@ if (!('encodeInto' in cachedTextEncoder)) {
 
 let WASM_VECTOR_LEN = 0;
 
-let wasmModule, wasm;
+let wasmModule, wasmInstance, wasm;
 function __wbg_finalize_init(instance, module) {
+    wasmInstance = instance;
     wasm = instance.exports;
     wasmModule = module;
     cachedDataViewMemory0 = null;
