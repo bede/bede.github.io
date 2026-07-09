@@ -1,4 +1,4 @@
-// updeacon-check: in-browser host-content check
+// sapiometer: in-browser human-content check
 import { MSG, DETECT_DEFAULTS } from "./protocol.js?v=20260708-100430";
 import { SEQ_RE, pairSequenceFiles } from "./pairing.js";
 
@@ -29,12 +29,25 @@ function setStatus(msg, kind) {
   statusEl.className = kind || "";
 }
 
+function setProgress(pct) {
+  statusEl.style.setProperty("--progress", `${Math.max(0, Math.min(100, pct))}%`);
+}
+
+function clearProgress() {
+  statusEl.style.removeProperty("--progress");
+}
+
 // --- WASM worker -------------------------------------------------------------
-const worker = new Worker(`./worker.js?v=${ASSET_VERSION}`, { type: "module" });
+// Resolve against this module's URL (not the document) so it works when the page
+// lives in a subdir (e.g. /sapiometer/) while sapiometer.js/worker.js sit elsewhere.
+const worker = new Worker(new URL(`./worker.js?v=${ASSET_VERSION}`, import.meta.url), {
+  type: "module",
+});
 
 let onOutputBatch = null;
 let onWorkerError = null;
 let onIndexLoaded = null;
+let onProgress = null;
 
 worker.onmessage = (e) => {
   const m = e.data;
@@ -49,6 +62,9 @@ worker.onmessage = (e) => {
         onIndexLoaded = null;
         cb();
       }
+      break;
+    case MSG.PROGRESS:
+      if (onProgress) onProgress(m);
       break;
     case MSG.OUTPUT_CHUNK_BATCH:
       if (onOutputBatch) onOutputBatch(m);
@@ -147,15 +163,15 @@ function ensureIndexLoaded() {
 
     const cached = await getCachedIndex(INDEX_URL);
     if (cached) {
-      setStatus("Loading host index…");
+      setStatus("Loading human index…");
       sendIndexToWorker(await cached.arrayBuffer());
     } else {
-      setStatus("Downloading host index…");
+      setStatus("Downloading human index…");
       const blob = await downloadIndex(INDEX_URL);
       await putCachedIndex(INDEX_URL, blob).catch((err) =>
         console.warn("updeacon: failed to cache index", err)
       );
-      setStatus("Loading host index…");
+      setStatus("Loading human index…");
       sendIndexToWorker(await blob.arrayBuffer());
     }
 
@@ -173,6 +189,7 @@ function ensureIndexLoaded() {
 function scanSingleStream(file, hooks) {
   return new ReadableStream({
     start() {
+      onProgress = hooks.onProgress;
       worker.postMessage({ type: MSG.FILTER, data: { file, ...DETECT_DEFAULTS } });
     },
     pull(controller) {
@@ -180,6 +197,7 @@ function scanSingleStream(file, hooks) {
         onWorkerError = (message) => {
           onWorkerError = null;
           onOutputBatch = null;
+          onProgress = null;
           reject(new Error(message));
         };
         onOutputBatch = (m) => {
@@ -187,6 +205,7 @@ function scanSingleStream(file, hooks) {
           for (const buf of m.chunks) controller.enqueue(new Uint8Array(buf));
           if (m.done) {
             onWorkerError = null;
+            onProgress = null;
             if (hooks.onStats) hooks.onStats(m.stats);
             controller.close();
           }
@@ -198,6 +217,7 @@ function scanSingleStream(file, hooks) {
     cancel() {
       onOutputBatch = null;
       onWorkerError = null;
+      onProgress = null;
     },
   });
 }
@@ -215,6 +235,7 @@ function scanPairedStreams(group, hooks) {
     state.pulling = new Promise((resolve, reject) => {
       onWorkerError = (message) => {
         clearHandlers();
+        onProgress = null;
         reject(new Error(message));
       };
       onOutputBatch = (m) => {
@@ -223,6 +244,7 @@ function scanPairedStreams(group, hooks) {
         for (const buf of m.chunksR2 || []) state.queues.r2.push(new Uint8Array(buf));
         if (m.done) {
           state.done = true;
+          onProgress = null;
           if (hooks.onStats) hooks.onStats(m.stats);
         }
         resolve();
@@ -239,6 +261,7 @@ function scanPairedStreams(group, hooks) {
       start() {
         if (!state.started) {
           state.started = true;
+          onProgress = hooks.onProgress;
           worker.postMessage({
             type: MSG.FILTER,
             data: { file1: group.file1, file2: group.file2, ...DETECT_DEFAULTS },
@@ -255,6 +278,7 @@ function scanPairedStreams(group, hooks) {
       },
       cancel() {
         clearHandlers();
+        onProgress = null;
       },
     });
 
@@ -269,16 +293,17 @@ async function drain(stream) {
   }
 }
 
-async function scanGroup(group) {
+async function scanGroup(group, onProgressUpdate) {
   let stats = null;
   const onStats = (s) => {
     stats = s;
   };
+  const hooks = { onStats, onProgress: onProgressUpdate };
   if (group.kind === "paired") {
-    const { streamR1, streamR2 } = scanPairedStreams(group, { onStats });
+    const { streamR1, streamR2 } = scanPairedStreams(group, hooks);
     await Promise.all([drain(streamR1), drain(streamR2)]);
   } else {
-    const stream = scanSingleStream(group.file, { onStats });
+    const stream = scanSingleStream(group.file, hooks);
     await drain(stream);
   }
   return stats;
@@ -286,16 +311,16 @@ async function scanGroup(group) {
 
 // --- Result rendering --------------------------------------------------------
 function tier(maxFrac) {
-  if (maxFrac > HIGH_THRESHOLD) return { cls: "high-host", verdict: "High host content detected" };
-  if (maxFrac > WARN_THRESHOLD) return { cls: "warn", verdict: "Moderate host content detected" };
-  return { cls: "pass", verdict: "Host check passed" };
+  if (maxFrac > HIGH_THRESHOLD) return { cls: "high-host", verdict: "High human content" };
+  if (maxFrac > WARN_THRESHOLD) return { cls: "warn", verdict: "Moderate human content" };
+  return { cls: "pass", verdict: "Low human content" };
 }
 
-function resultText(results, verdict) {
-  const stat = (r) =>
-    `${(r.hostFrac * 100).toFixed(1)}% host (${r.hostReads.toLocaleString()} of ${r.readsIn.toLocaleString()} reads)`;
-  if (results.length === 1) return `${verdict}. ${stat(results[0])}`;
-  return [`${verdict}.`, ...results.map((r) => `${r.label}: ${stat(r)}`)].join("\n");
+function resultText(result, verdict) {
+  return (
+    `${verdict} (${(result.hostFrac * 100).toFixed(1)}%; ` +
+    `${result.hostReads.toLocaleString()}/${result.readsIn.toLocaleString()} sequences)`
+  );
 }
 
 // --- File selection ----------------------------------------------------------
@@ -318,44 +343,59 @@ async function handleFiles(files) {
     return;
   }
 
-  const pairs = groups.filter((g) => g.kind === "paired").length;
-  const singles = groups.length - pairs;
-  const parts = [];
-  if (pairs) parts.push(`${pairs} pair${pairs === 1 ? "" : "s"}`);
-  if (singles) parts.push(`${singles} single${singles === 1 ? "" : "s"}`);
+  // The check page handles exactly one input: a single file or one R1/R2 pair
+  if (groups.length !== 1) {
+    dropZone.classList.remove("loaded");
+    dropSummary.textContent = "Drop a single file or one R1/R2 pair.";
+    setStatus("");
+    return;
+  }
+
+  const group = groups[0];
   dropZone.classList.add("loaded");
-  dropSummary.textContent = `${seqs.length} file${seqs.length === 1 ? "" : "s"} · ${parts.join(", ")}`;
+  dropSummary.textContent =
+    group.kind === "paired" ? `Pair · ${group.label}` : `Single · ${group.label}`;
 
   busy = true;
   dropZone.classList.add("busy");
 
+  const onProgressUpdate = (m) => {
+    const readsIn = Number(m.readsIn || 0);
+    const readsOut = Number(m.readsOut || 0);
+    const pct = m.bytesTotal ? (m.bytesProcessed / m.bytesTotal) * 100 : 0;
+    setProgress(pct);
+    if (readsIn > 0) {
+      const hostReads = readsIn - readsOut;
+      const { cls, verdict } = tier(hostReads / readsIn);
+      setStatus(resultText({ readsIn, hostReads, hostFrac: hostReads / readsIn }, verdict), cls);
+    }
+  };
+
   try {
-    setStatus("Preparing host index…");
+    setStatus("Preparing human index…");
     await ensureIndexLoaded();
 
-    const results = [];
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i];
-      setStatus(`Checking ${i + 1} of ${groups.length}: ${group.label}`);
-      const stats = await scanGroup(group);
-      const readsIn = Number(stats?.readsIn || 0);
-      const readsOut = Number(stats?.readsOut || 0);
-      const hostReads = readsIn - readsOut;
-      results.push({
-        label: group.label,
-        readsIn,
-        hostReads,
-        hostFrac: readsIn > 0 ? hostReads / readsIn : 0,
-      });
-    }
+    setStatus(`Checking ${group.label}…`);
+    setProgress(0);
+    const stats = await scanGroup(group, onProgressUpdate);
+    const readsIn = Number(stats?.readsIn || 0);
+    const readsOut = Number(stats?.readsOut || 0);
+    const hostReads = readsIn - readsOut;
+    const result = {
+      label: group.label,
+      readsIn,
+      hostReads,
+      hostFrac: readsIn > 0 ? hostReads / readsIn : 0,
+    };
 
-    const maxFrac = Math.max(0, ...results.map((r) => r.hostFrac));
-    const { cls, verdict } = tier(maxFrac);
-    const text = resultText(results, verdict);
+    const { cls, verdict } = tier(result.hostFrac);
+    const text = resultText(result, verdict);
+    setProgress(100);
     setStatus(text, cls);
-    console.log("updeacon-check:", text);
+    console.log("sapiometer:", text);
   } catch (err) {
     console.error(err);
+    clearProgress();
     setStatus("Detection failed: " + (err?.message || err), "error");
   } finally {
     busy = false;
