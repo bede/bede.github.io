@@ -311,16 +311,17 @@ async function scanGroup(group, onProgressUpdate) {
 
 // --- Result rendering --------------------------------------------------------
 function tier(maxFrac) {
-  if (maxFrac > HIGH_THRESHOLD) return { cls: "high-host", verdict: "High human content" };
-  if (maxFrac > WARN_THRESHOLD) return { cls: "warn", verdict: "Moderate human content" };
-  return { cls: "pass", verdict: "Low human content" };
+  if (maxFrac > HIGH_THRESHOLD)
+    return { cls: "high-host", verdict: "High human content", note: "Share with caution." };
+  if (maxFrac > WARN_THRESHOLD) return { cls: "warn", verdict: "Moderate human content." };
+  return { cls: "pass", verdict: "Low human content." };
 }
 
-function resultText(result, verdict) {
-  return (
+function resultText(result, verdict, note) {
+  const base =
     `${verdict} (${(result.hostFrac * 100).toFixed(1)}%; ` +
-    `${result.hostReads.toLocaleString()}/${result.readsIn.toLocaleString()} sequences)`
-  );
+    `${result.hostReads.toLocaleString()}/${result.readsIn.toLocaleString()} sequences)`;
+  return note ? `${base}. ${note}` : base;
 }
 
 // --- File selection ----------------------------------------------------------
@@ -343,7 +344,7 @@ async function handleFiles(files) {
     return;
   }
 
-  // The check page handles exactly one input: a single file or one R1/R2 pair
+  // sapiometer handles exactly one input: a single file or one R1/R2 pair
   if (groups.length !== 1) {
     dropZone.classList.remove("loaded");
     dropSummary.textContent = "Drop a single file or one R1/R2 pair.";
@@ -366,8 +367,8 @@ async function handleFiles(files) {
     setProgress(pct);
     if (readsIn > 0) {
       const hostReads = readsIn - readsOut;
-      const { cls, verdict } = tier(hostReads / readsIn);
-      setStatus(resultText({ readsIn, hostReads, hostFrac: hostReads / readsIn }, verdict), cls);
+      const { cls, verdict, note } = tier(hostReads / readsIn);
+      setStatus(resultText({ readsIn, hostReads, hostFrac: hostReads / readsIn }, verdict, note), cls);
     }
   };
 
@@ -388,8 +389,8 @@ async function handleFiles(files) {
       hostFrac: readsIn > 0 ? hostReads / readsIn : 0,
     };
 
-    const { cls, verdict } = tier(result.hostFrac);
-    const text = resultText(result, verdict);
+    const { cls, verdict, note } = tier(result.hostFrac);
+    const text = resultText(result, verdict, note);
     setProgress(100);
     setStatus(text, cls);
     console.log("sapiometer:", text);

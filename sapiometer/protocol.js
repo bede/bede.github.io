@@ -27,7 +27,7 @@ export const FILTER_DEFAULTS = Object.freeze({
   outputFasta: false,
 });
 
-// Host-check thresholds (-a 1 -r 0, deplete): a read is host on a single k-mer hit
+// sapiometer thresholds (-a 1 -r 0, deplete): a read is human on a single k-mer hit
 export const DETECT_DEFAULTS = Object.freeze({
   deplete: true,
   absThreshold: 1,
