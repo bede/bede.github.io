@@ -42,6 +42,12 @@
   .drop-zone .filename:empty { display: none; }
   .drop-zone .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
   .drop-zone .idx-info:empty { display: none; }
+  /* Presigned-link mode: stands in for the credential fields. */
+  .link-banner { border: 1px solid #4caf50; background: #f0fff0; padding: 0.8rem 1rem; margin-bottom: 1rem; text-align: center; }
+  .link-banner .link-dest { font-family: var(--mono); font-size: 0.9rem; color: #333; word-break: break-all; }
+  .link-banner .link-note { font-size: 0.8rem; color: #666; margin-top: 0.3rem; }
+  .link-banner.expired { border-color: #e74c3c; background: #fff5f5; }
+  .link-banner.expired .link-note { color: #e74c3c; }
   .index-status { border: 1px solid #ddd; background: #fff; padding: 1rem; margin-bottom: 1rem; transition: all 0.2s; text-align: center; }
   .index-status input { display: none; }
   .index-status .filename { color: #333; }
@@ -105,13 +111,22 @@
 <p class="subtitle">Securely dehost and upload DNA sequences in fasta/fastq format directly to S3 object storage.
   Runs <a href="https://github.com/bede/deacon">Deacon</a> in the browser to deplete human sequences prior to upload. FASTQ files are uploaded to a timestamped directory prefix in the specified bucket. Nested directory structures are preserved.</p>
 <div class="usage">
-  <ol>
+  <ol id="usage-link" hidden>
+    <li>Press 'Download index', else drag &amp; drop a local copy of <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx">panhuman-1</a>.</li>
+    <li>Drag &amp; drop fasta/fastq files you wish to upload, or a directory containing them. Illumina R1/R2 files are paired automatically.</li>
+    <li>Choose a descriptive name for your upload. This link already authorises it, so no credentials are needed.</li>
+    <li>Press either 'Filter &amp; upload' or 'Filter only', and keep the browser open until completion.</li>
+    <li>Reuse this link until it expires; each upload lands in its own timestamped folder.</li>
+  </ol>
+  <ol id="usage-creds">
     <li>Press 'Download index', else drag & drop a local copy of <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx">panhuman-1</a>.</li>
     <li>Drag &amp; drop fasta/fastq files you wish to upload, or a directory containing them. Illumina R1/R2 files are paired automatically.</li>
     <li>Enter S3-compatible object storage credentials and choose a descriptive name for your upload.</li>
     <li>Press either 'Filter & upload' or 'Filter only', and keep the browser open until completion.</li>
   </ol>
 </div>
+
+<div class="link-banner" id="link-banner" hidden></div>
 
 <div class="index-status" id="index-status">
   <input type="file" id="index-input" accept=".idx,.pidx">
@@ -130,25 +145,27 @@
   <div class="summary" id="dir-summary"></div>
 </div>
 
-<div class="field-row">
-  <div class="field">
-    <label for="server">Server address</label>
-    <input type="text" id="server" name="server" autocomplete="on" spellcheck="false" placeholder="S3 endpoint URL">
+<div id="creds">
+  <div class="field-row">
+    <div class="field">
+      <label for="server">Server address</label>
+      <input type="text" id="server" name="server" autocomplete="on" spellcheck="false" placeholder="S3 endpoint URL">
+    </div>
+    <div class="field">
+      <label for="bucket">Bucket</label>
+      <input type="text" id="bucket" name="bucket" autocomplete="on" spellcheck="false" placeholder="S3 bucket">
+    </div>
   </div>
-  <div class="field">
-    <label for="bucket">Bucket</label>
-    <input type="text" id="bucket" name="bucket" autocomplete="on" spellcheck="false" placeholder="S3 bucket">
-  </div>
-</div>
 
-<div class="field-row">
-  <div class="field">
-    <label for="access-key">Access key ID</label>
-    <input type="text" id="access-key" name="access-key-id" autocomplete="on" spellcheck="false" placeholder="S3 access key ID">
-  </div>
-  <div class="field">
-    <label for="secret-key">Secret access key</label>
-    <input type="password" id="secret-key" autocomplete="off" spellcheck="false" placeholder="S3 secret access key">
+  <div class="field-row">
+    <div class="field">
+      <label for="access-key">Access key ID</label>
+      <input type="text" id="access-key" name="access-key-id" autocomplete="on" spellcheck="false" placeholder="S3 access key ID">
+    </div>
+    <div class="field">
+      <label for="secret-key">Secret access key</label>
+      <input type="password" id="secret-key" autocomplete="off" spellcheck="false" placeholder="S3 secret access key">
+    </div>
   </div>
 </div>
 

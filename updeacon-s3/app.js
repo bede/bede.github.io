@@ -1,7 +1,15 @@
 // Updeacon client fa/fq dehosting & direct-to-s3 upload
-import { S3Client, Upload } from "./vendor/aws-sdk.js";
 import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=20260708-100430";
 import { SEQ_RE, groupRelativePaths, pairSequenceFiles } from "./pairing.js";
+import {
+  parseUploadLink,
+  describeExpiry,
+  postObject,
+  spoolToFile,
+  spoolName,
+  releaseSpool,
+  purgeStaleSpools,
+} from "./presign.js?v=20260708-100430";
 
 // --- Fixed configuration -----------------------------------------------------
 // Ceph RADOS Gateway, not AWS: dummy region, forcePathStyle required (no vhost buckets)
@@ -9,9 +17,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "5ce5c75";
-
-console.log(`updeacon ${UPDEACON_VERSION}: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`);
+const BUILD_COMMIT = "657f13f";
 
 const ASSET_VERSION = "20260708-100430";
 
@@ -24,6 +30,16 @@ const INDEX_URL =
   "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx";
 const INDEX_FILENAME = "panhuman-1.k31w21.pidx";
 const INDEX_DISPLAY_NAME = "Index: panhuman-1"; // shown in panel; filename kept for summaries
+
+// --- Upload link --------------------------------------------------------------
+// Signed POST policy in the fragment, so it never reaches the web server
+let LINK = null;
+let linkError = null;
+try {
+  LINK = parseUploadLink(location.hash);
+} catch (err) {
+  linkError = err.message;
+}
 
 // --- DOM ---------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -52,6 +68,10 @@ const dehostLabel = $("dehost-label");
 const fileListEl = $("file-list");
 const statusEl = $("status");
 const purgeIndexEl = $("purge-index");
+const credsEl = $("creds");
+const linkBannerEl = $("link-banner");
+const usageCredsEl = $("usage-creds");
+const usageLinkEl = $("usage-link");
 
 bucketEl.value = bucketEl.value || BUCKET;
 serverEl.value = serverEl.value || ENDPOINT;
@@ -71,6 +91,8 @@ let workerReady = false; // worker has finished WASM init (MSG.READY)
 let pendingIndexBuffer = null; // index bytes waiting for the worker to be ready
 let indexFailed = false; // download failed; panel acts as a manual drop target
 let indexNeedsDownload = false; // not cached; panel click starts the download
+let linkExpired = false; // presigned link is past its expiry (server enforces too)
+let oversizeFiles = []; // inputs above the link's per-object cap
 
 // --- Helpers -----------------------------------------------------------------
 function setStatus(msg, kind) {
@@ -117,6 +139,15 @@ function setButtonDisabled(btn, disabled) {
   btn.classList.toggle("pulse-glow", !disabled);
 }
 
+function credentialsFilled() {
+  return (
+    bucketEl.value.trim() &&
+    serverEl.value.trim() &&
+    accessKeyEl.value.trim() &&
+    secretKeyEl.value.trim()
+  );
+}
+
 function updateUploadEnabled() {
   if (!indexLoaded || uploadCompleted) {
     setButtonDisabled(uploadBtn, true);
@@ -124,38 +155,102 @@ function updateUploadEnabled() {
     return;
   }
   const haveFiles = selectedFiles.length > 0;
+  // Filter only never touches S3, so a bad link doesn't disable it
   setButtonDisabled(filterBtn, isUploading || !haveFiles);
-  setButtonDisabled(
-    uploadBtn,
-    isUploading ||
-      !haveFiles ||
-      !bucketEl.value.trim() ||
-      !serverEl.value.trim() ||
-      !accessKeyEl.value.trim() ||
-      !secretKeyEl.value.trim()
-  );
+  const uploadBlocked = LINK
+    ? linkExpired || oversizeFiles.length > 0
+    : !credentialsFilled();
+  setButtonDisabled(uploadBtn, isUploading || !haveFiles || !!linkError || uploadBlocked);
 }
 
-// Build upload items; keys are <timestamp>/<relative path> so basenames never collide
-function buildUploadItems(groups, timestamp) {
+// --- Mode: presigned link vs S3 credentials ----------------------------------
+function humanDate(ms) {
+  return new Date(ms).toISOString().replace("T", " ").replace(/:\d\d\.\d+Z$/, " UTC");
+}
+
+function renderLinkBanner() {
+  const { expired, text } = describeExpiry(LINK.expiresAt);
+  linkExpired = expired;
+  linkBannerEl.classList.toggle("expired", expired);
+  linkBannerEl.innerHTML = "";
+
+  const dest = document.createElement("div");
+  dest.className = "link-dest";
+  dest.textContent = `${LINK.bucket}/${LINK.prefix}`;
+
+  const note = document.createElement("div");
+  note.className = "link-note";
+  note.textContent = expired
+    ? `This upload link expired ${text} ago (${humanDate(LINK.expiresAt)}). Ask whoever sent it for a new one.`
+    : `Authorised upload — no credentials needed. Link expires in ${text} (${humanDate(LINK.expiresAt)}).`;
+
+  linkBannerEl.append(dest, note);
+}
+
+function initMode() {
+  if (linkError) {
+    // Banner, not #status: initIndex() overwrites #status moments later
+    credsEl.hidden = true;
+    linkBannerEl.hidden = false;
+    linkBannerEl.classList.add("expired");
+    const note = document.createElement("div");
+    note.className = "link-note";
+    note.textContent = `${linkError} Ask whoever sent it for a new one.`;
+    linkBannerEl.replaceChildren(note);
+    return;
+  }
+  if (!LINK) {
+    console.log(
+      `updeacon ${UPDEACON_VERSION}: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`
+    );
+    return;
+  }
+
+  // Never log the link itself: the signature is a bearer credential
+  console.log(
+    `updeacon ${UPDEACON_VERSION}: presigned upload to "${LINK.bucket}/${LINK.prefix}" ` +
+      `at ${LINK.endpoint} (commit ${BUILD_COMMIT})`
+  );
+  credsEl.hidden = true;
+  usageCredsEl.hidden = true;
+  usageLinkEl.hidden = false;
+  linkBannerEl.hidden = false;
+  renderLinkBanner();
+  setInterval(renderLinkBanner, 60000); // tick the countdown, and expire in place
+  purgeStaleSpools();
+}
+
+// Build upload items; keys are <keyBase>/<relative path> so basenames never collide
+function buildUploadItems(groups, keyBase) {
   return groups.map((group) => {
     const paths = groupRelativePaths(group);
     if (group.kind === "paired") {
       return {
         ...group,
-        key: `${timestamp}/${paths.input}`,
-        key2: `${timestamp}/${paths.input2}`,
+        key: `${keyBase}/${paths.input}`,
+        key2: `${keyBase}/${paths.input2}`,
       };
     }
     return {
       ...group,
-      key: `${timestamp}/${paths.input}`,
+      key: `${keyBase}/${paths.input}`,
     };
   });
 }
 
+// Output is never larger than input, so an oversize input can't fit a POST
+function findOversizeFiles(groups) {
+  if (!LINK?.maxBytes) return [];
+  const files = groups.flatMap((g) => (g.kind === "paired" ? [g.file1, g.file2] : [g.file]));
+  return files.filter((f) => (f.size || 0) > LINK.maxBytes);
+}
+
 function setSelection(files) {
   uploadCompleted = false; // fresh selection clears the post-upload lock
+  // Re-arm the run name; a link is reusable
+  frozenPrefix = null;
+  runNameEl.readOnly = false;
+  tickNamePrefix();
   const seqs = files.filter((f) => SEQ_RE.test(f.name));
   try {
     selectedFiles = pairSequenceFiles(seqs);
@@ -187,7 +282,17 @@ function setSelection(files) {
       seqs.length === 1 ? "" : "s"
     } selected (${parts.join(", ")}) · ${humanBytes(totalBytes)}`;
   }
-  setStatus("");
+  oversizeFiles = findOversizeFiles(selectedFiles);
+  if (oversizeFiles.length) {
+    const names = oversizeFiles.map((f) => `${f.name} (${humanBytes(f.size)})`).join(", ");
+    setStatus(
+      `Too large for a presigned upload link, which is capped at ${humanBytes(LINK.maxBytes)} ` +
+        `per file: ${names}. Remove these files, or upload them with S3 credentials.`,
+      "error"
+    );
+  } else {
+    setStatus("");
+  }
   progressWrap.style.display = "none";
   renderFileList();
   updateUploadEnabled();
@@ -244,7 +349,11 @@ worker.onmessage = (e) => {
       const kw = /k=(\d+),\s*w=(\d+)/.exec(m.info || "");
       indexK = kw ? Number(kw[1]) : null;
       indexW = kw ? Number(kw[2]) : null;
-      setStatus("Index loaded. Select sequences and enter S3 credentials");
+      setStatus(
+        LINK
+          ? "Index loaded. Select sequences to filter and upload"
+          : "Index loaded. Select sequences and enter S3 credentials"
+      );
       updateUploadEnabled();
       break;
     }
@@ -881,15 +990,152 @@ async function filterOnly() {
   }
 }
 
-async function uploadAll() {
+// --- Uploaders ----------------------------------------------------------------
+// Both expose preflight/uploadGroup/putSmall, so uploadAll() is mode-agnostic.
+// Credentials stream a group into a multipart upload; a POST needs it whole.
+
+// RGW returns the CORS header on an anonymous 403, so this resolves iff CORS works
+async function checkReachable(endpoint, bucket) {
+  setStatus("Checking connection …");
+  try {
+    await fetch(`${endpoint}/${bucket}`, { method: "GET", credentials: "omit", cache: "no-store" });
+  } catch (_) {
+    const err = new Error("Can't reach the object store from this page.");
+    err.updeaconCause = "cors";
+    throw err;
+  }
+}
+
+function makeCredentialUploader() {
   const accessKeyId = accessKeyEl.value.trim();
   const secretAccessKey = secretKeyEl.value.trim();
   const bucket = bucketEl.value.trim();
   const endpoint = serverEl.value.trim();
+  let client = null;
+  let Upload = null;
 
+  const put = (key, body, contentType, onProgress) => {
+    const up = new Upload({
+      client,
+      params: { Bucket: bucket, Key: key, Body: body, ...(contentType && { ContentType: contentType }) },
+      queueSize: QUEUE_SIZE,
+      partSize: PART_SIZE,
+    });
+    if (onProgress) up.on("httpUploadProgress", (p) => onProgress(p.loaded || 0));
+    return up.done();
+  };
+
+  return {
+    async preflight(keyBase) {
+      // Only credential mode needs the SDK; link mode never downloads it
+      const sdk = await import("./vendor/aws-sdk.js");
+      Upload = sdk.Upload;
+      client = new sdk.S3Client({
+        endpoint,
+        region: REGION,
+        forcePathStyle: true,
+        credentials: { accessKeyId, secretAccessKey },
+      });
+      await checkReachable(endpoint, bucket);
+      // CORS passed, so any failure here is credentials
+      setStatus("Checking credentials …");
+      try {
+        await put(`${keyBase}/_ACCESS_KEY_ID.txt`, new Blob([accessKeyId], { type: "text/plain" }), "text/plain");
+      } catch (err) {
+        err.updeaconCause = "credentials";
+        throw err;
+      }
+    },
+    putSmall: (key, blob, contentType) => put(key, blob, contentType),
+    async uploadGroup(item, outputs, hooks) {
+      if (item.kind !== "paired") {
+        await put(item.key, outputs.stream, null, hooks.onUploadProgress);
+        return [item.key];
+      }
+      let r1 = 0;
+      let r2 = 0;
+      await Promise.all([
+        put(item.key, outputs.streamR1, null, (n) => hooks.onUploadProgress((r1 = n) + r2)),
+        put(item.key2, outputs.streamR2, null, (n) => hooks.onUploadProgress(r1 + (r2 = n))),
+      ]);
+      return [item.key, item.key2];
+    },
+  };
+}
+
+function makeLinkUploader(link) {
+  let spoolSeq = 0;
+
+  // Definitive check; the input-size test in setSelection() is early warning
+  const checkSize = (key, file) => {
+    if (!link.maxBytes || file.size <= link.maxBytes) return;
+    const err = new Error(
+      `${key.split("/").pop()} is ${humanBytes(file.size)} after filtering, above the ` +
+        `${humanBytes(link.maxBytes)} per-file limit for presigned upload links.`
+    );
+    err.updeaconCause = "size";
+    throw err;
+  };
+
+  return {
+    async preflight(keyBase) {
+      const { expired, text } = describeExpiry(link.expiresAt);
+      if (expired) {
+        const err = new Error(`This upload link expired ${text} ago.`);
+        err.updeaconCause = "link";
+        throw err;
+      }
+      await checkReachable(link.endpoint, link.bucket);
+      // Fail now, not after an hour of filtering; also marks an abandoned run
+      setStatus("Checking upload link …");
+      await postObject({
+        link,
+        key: `${keyBase}/_UPLOAD_STARTED.txt`,
+        body: new Blob([`${new Date().toISOString()}\n`], { type: "text/plain" }),
+        contentType: "text/plain",
+      });
+    },
+    putSmall: (key, blob, contentType) => postObject({ link, key, body: blob, contentType }),
+    async uploadGroup(item, outputs, hooks) {
+      const specs =
+        item.kind === "paired"
+          ? [
+              { key: item.key, stream: outputs.streamR1, mate: "r1" },
+              { key: item.key2, stream: outputs.streamR2, mate: "r2" },
+            ]
+          : [{ key: item.key, stream: outputs.stream, mate: "" }];
+      const names = specs.map((s) => spoolName(spoolSeq++, s.mate));
+
+      try {
+        // Mates must drain together; the worker interleaves R1/R2 and stalls otherwise
+        const files = await Promise.all(specs.map((s, i) => spoolToFile(s.stream, names[i])));
+        specs.forEach((s, i) => checkSize(s.key, files[i]));
+
+        hooks.onUploadStart(files.reduce((n, f) => n + f.size, 0));
+        let done = 0;
+        for (let i = 0; i < specs.length; i++) {
+          await postObject({
+            link,
+            key: specs[i].key,
+            body: files[i],
+            onProgress: (loaded) => hooks.onUploadProgress(done + loaded),
+          });
+          done += files[i].size;
+        }
+        return specs.map((s) => s.key);
+      } finally {
+        for (const name of names) await releaseSpool(name);
+      }
+    },
+  };
+}
+
+async function uploadAll() {
   const timestamp = timestampPrefix();
   const dirPrefix = uploadDirName(timestamp);
-  const items = buildUploadItems(selectedFiles, dirPrefix);
+  // Own timestamped dir inside the prefix, so a reused link never overwrites
+  const keyBase = LINK ? LINK.prefix + dirPrefix : dirPrefix;
+  const items = buildUploadItems(selectedFiles, keyBase);
   if (!items.length) return;
 
   // Commit to this name: freeze the ticking prefix and lock the field
@@ -921,12 +1167,7 @@ async function uploadAll() {
   });
   const rows = fileRows;
 
-  const client = new S3Client({
-    endpoint,
-    region: REGION,
-    forcePathStyle: true,
-    credentials: { accessKeyId, secretAccessKey },
-  });
+  const uploader = LINK ? makeLinkUploader(LINK) : makeCredentialUploader();
 
   let dehostedBefore = 0; // input bytes of fully-dehosted files
   let totalBasesIn = 0; // input bases dehosted (from per-file stats)
@@ -935,44 +1176,10 @@ async function uploadAll() {
   let inFileLoop = false;
   const uploadedKeys = []; // every object written, in upload order (manifest contents)
   try {
-    // CORS probe: RGW returns the CORS header on an anonymous 403, so this resolves iff CORS works
-    setStatus("Checking connection …");
-    let corsOk = false;
-    try {
-      await fetch(`${endpoint}/${bucket}`, {
-        method: "GET",
-        credentials: "omit",
-        cache: "no-store",
-      });
-      corsOk = true;
-    } catch (_) {
-      corsOk = false;
-    }
-    if (!corsOk) {
-      const e = new Error("Can't reach the object store from this page.");
-      e.updeaconCause = "cors";
-      throw e;
-    }
-
-    // Credential check (writes _ACCESS_KEY_ID.txt); CORS passed, so any failure here is credentials
-    setStatus(`Checking credentials …`);
-    try {
-      await new Upload({
-        client,
-        params: {
-          Bucket: bucket,
-          Key: `${dirPrefix}/_ACCESS_KEY_ID.txt`,
-          Body: new Blob([accessKeyId], { type: "text/plain" }),
-          ContentType: "text/plain",
-        },
-      }).done();
-    } catch (err) {
-      err.updeaconCause = "credentials";
-      throw err;
-    }
+    await uploader.preflight(keyBase);
 
     inFileLoop = true;
-    setStatus(`Filtering and uploading to ${dirPrefix}`);
+    setStatus(`Filtering and uploading to ${keyBase}`);
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       rows[i].li.className = "active";
@@ -980,12 +1187,21 @@ async function uploadAll() {
 
       let curProcessed = 0; // input bytes dehosted for this group
       let curUploaded = 0; // output bytes uploaded for this group
+      let uploadTotal = 0; // output bytes to upload (link mode: known after spooling)
+      let uploading = false; // link mode uploads only once filtering is done
       let fileStats = null;
       let fileElapsed = 0;
 
       const renderRow = () => {
+        if (uploading) {
+          const upct = uploadTotal ? Math.min(100, (curUploaded / uploadTotal) * 100) : 100;
+          rows[i].st.textContent = `uploading ${upct.toFixed(0)}%`;
+          return;
+        }
         const dpct = item.size ? Math.min(100, (curProcessed / item.size) * 100) : 100;
-        rows[i].st.textContent = `filtered ${dpct.toFixed(0)}% · uploaded ${humanBytes(curUploaded)}`;
+        rows[i].st.textContent = LINK
+          ? `filtering ${dpct.toFixed(0)}%`
+          : `filtered ${dpct.toFixed(0)}% · uploaded ${humanBytes(curUploaded)}`;
       };
       const onProgress = (m) => {
         curProcessed = m.bytesProcessed || 0;
@@ -1001,62 +1217,33 @@ async function uploadAll() {
         fileStats = stats;
         fileElapsed = Number(elapsed) || 0;
       };
+      // Credential mode streams, so it never calls onUploadStart
+      const onUploadStart = (total) => {
+        uploading = true;
+        uploadTotal = total;
+        renderRow();
+      };
+      const onUploadProgress = (loaded) => {
+        curUploaded = loaded;
+        if (uploading) {
+          dehostLabel.textContent =
+            `Uploading ${i + 1} of ${items.length} · ` +
+            `${humanBytes(curUploaded)} / ${humanBytes(uploadTotal)}`;
+        }
+        renderRow();
+      };
 
       const outputs = dehostGroup(item, { onProgress, onStats });
-      if (item.kind === "paired") {
-        let uploadedR1 = 0;
-        let uploadedR2 = 0;
-        const upR1 = new Upload({
-          client,
-          params: { Bucket: bucket, Key: item.key, Body: outputs.streamR1 },
-          queueSize: QUEUE_SIZE,
-          partSize: PART_SIZE,
-        });
-        const upR2 = new Upload({
-          client,
-          params: { Bucket: bucket, Key: item.key2, Body: outputs.streamR2 },
-          queueSize: QUEUE_SIZE,
-          partSize: PART_SIZE,
-        });
-        upR1.on("httpUploadProgress", (p) => {
-          uploadedR1 = p.loaded || 0;
-          curUploaded = uploadedR1 + uploadedR2;
-          renderRow();
-        });
-        upR2.on("httpUploadProgress", (p) => {
-          uploadedR2 = p.loaded || 0;
-          curUploaded = uploadedR1 + uploadedR2;
-          renderRow();
-        });
-        await Promise.all([upR1.done(), upR2.done()]);
-        uploadedKeys.push(item.key, item.key2);
-      } else {
-        const up = new Upload({
-          client,
-          params: { Bucket: bucket, Key: item.key, Body: outputs.stream },
-          queueSize: QUEUE_SIZE,
-          partSize: PART_SIZE,
-        });
-        up.on("httpUploadProgress", (p) => {
-          curUploaded = p.loaded || 0;
-          renderRow();
-        });
-        await up.done();
-        uploadedKeys.push(item.key);
-      }
+      uploadedKeys.push(...(await uploader.uploadGroup(item, outputs, { onUploadStart, onUploadProgress })));
 
       // Upload a Deacon-style JSON summary alongside the file
       const summary = buildSummary({ item, stats: fileStats, elapsed: fileElapsed });
       const summaryKey = `${item.key}.deacon.json`;
-      await new Upload({
-        client,
-        params: {
-          Bucket: bucket,
-          Key: summaryKey,
-          Body: new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" }),
-          ContentType: "application/json",
-        },
-      }).done();
+      await uploader.putSmall(
+        summaryKey,
+        new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" }),
+        "application/json"
+      );
       uploadedKeys.push(summaryKey);
 
       dehostedBefore += item.size;
@@ -1075,17 +1262,13 @@ async function uploadAll() {
 
     // Write the manifest last, signalling upload completion
     setStatus("Finalising (writing manifest) …");
-    await new Upload({
-      client,
-      params: {
-        Bucket: bucket,
-        Key: `${dirPrefix}/_MANIFEST.txt`,
-        Body: new Blob([uploadedKeys.join("\n") + "\n"], { type: "text/plain" }),
-        ContentType: "text/plain",
-      },
-    }).done();
+    await uploader.putSmall(
+      `${keyBase}/_MANIFEST.txt`,
+      new Blob([uploadedKeys.join("\n") + "\n"], { type: "text/plain" }),
+      "text/plain"
+    );
 
-    setStatus(`Upload complete (${dirPrefix})`, "success");
+    setStatus(`Upload complete (${keyBase})`, "success");
     uploadCompleted = true; // lock buttons until next selection
   } catch (err) {
     const idx = completed; // the file that failed
@@ -1155,6 +1338,14 @@ function formatError(err) {
       `Authentication failed. Check S3 credentials and try again.`
     );
   }
+  if (err?.updeaconCause === "size") {
+    return msg;
+  }
+  if (err?.updeaconCause === "link") {
+    return (
+      `${msg}\nThis upload link is no longer valid. Ask whoever sent it for a new one.`
+    );
+  }
   if (err?.updeaconCause === "cors") {
     return (
       `Connection failed. Couldn't reach the object store from this page. The ` +
@@ -1179,4 +1370,5 @@ function formatError(err) {
 
 // --- Startup -----------------------------------------------------------------
 // Start index load in parallel with WASM init (bytes queue until READY); last so all decls exist
+initMode();
 initIndex();
