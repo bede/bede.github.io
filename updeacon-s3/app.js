@@ -1,5 +1,5 @@
 // Updeacon client fa/fq dehosting & direct-to-s3 upload
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=20260708-100430";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=20260710-183617";
 import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js";
 import {
   parseUploadLink,
@@ -10,7 +10,7 @@ import {
   spoolName,
   releaseSpool,
   purgeStaleSpools,
-} from "./presign.js?v=20260708-100430";
+} from "./presign.js?v=20260710-183617";
 
 // --- Fixed configuration -----------------------------------------------------
 // Ceph RADOS Gateway, not AWS: dummy region, forcePathStyle required (no vhost buckets)
@@ -18,9 +18,9 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "cc83697-dirty";
+const BUILD_COMMIT = "399536f-dirty";
 
-const ASSET_VERSION = "20260708-100430";
+const ASSET_VERSION = "20260710-183617";
 
 const PART_SIZE = 8 * 1024 * 1024;
 const QUEUE_SIZE = 4;
@@ -234,6 +234,10 @@ function initMode() {
   purgeStaleSpools();
 }
 
+// Filtered output is always gzip; uncompressed inputs get a .gz suffix so the name stays honest
+const GZ_RE = /\.gz$/i;
+const gzName = (name) => (GZ_RE.test(name) ? name : name + ".gz");
+
 // Build upload items; keys are <keyBase>/<relative path> so basenames never collide
 function buildUploadItems(groups, keyBase) {
   return groups.map((group) => {
@@ -241,13 +245,13 @@ function buildUploadItems(groups, keyBase) {
     if (group.kind === "paired") {
       return {
         ...group,
-        key: `${keyBase}/${paths.input}`,
-        key2: `${keyBase}/${paths.input2}`,
+        key: gzName(`${keyBase}/${paths.input}`),
+        key2: gzName(`${keyBase}/${paths.input2}`),
       };
     }
     return {
       ...group,
-      key: `${keyBase}/${paths.input}`,
+      key: gzName(`${keyBase}/${paths.input}`),
     };
   });
 }
@@ -968,11 +972,11 @@ async function filterOnly() {
           new Response(outputs.streamR1).blob(),
           new Response(outputs.streamR2).blob(),
         ]);
-        downloadBlob(blob1, group.file1.name);
-        downloadBlob(blob2, group.file2.name);
+        downloadBlob(blob1, gzName(group.file1.name));
+        downloadBlob(blob2, gzName(group.file2.name));
       } else {
         const blob = await new Response(outputs.stream).blob();
-        downloadBlob(blob, group.file.name);
+        downloadBlob(blob, gzName(group.file.name));
       }
 
       dehostedBefore += group.size;
