@@ -41,11 +41,11 @@ function readPolicy(encoded) {
     }
   }
 
-  if (!bucket) throw new Error("Upload link names no bucket.");
+  if (!bucket) throw new Error("Magic link names no bucket.");
   // Object store enforces the prefix; this only refuses an unscoped link
-  if (prefix == null) throw new Error("Upload link does not restrict uploads to a prefix.");
+  if (prefix == null) throw new Error("Magic link does not restrict uploads to a prefix.");
   const expiresAt = Date.parse(policy.expiration);
-  if (Number.isNaN(expiresAt)) throw new Error("Upload link has no valid expiry.");
+  if (Number.isNaN(expiresAt)) throw new Error("Magic link has no valid expiry.");
 
   return { bucket, prefix, maxBytes, expiresAt };
 }
@@ -59,13 +59,13 @@ export function parseUploadLink(hash) {
   try {
     payload = jsonFromBase64(raw);
   } catch (_) {
-    throw new Error("Upload link is corrupt — it may have been truncated in transit.");
+    throw new Error("Magic link is corrupt — it may have been truncated in transit.");
   }
   if (payload.v !== 1) {
-    throw new Error(`Upload link version ${payload.v} is not supported by this page.`);
+    throw new Error(`Magic link version ${payload.v} is not supported by this page.`);
   }
   if (!payload.endpoint || !payload.fields?.policy || !payload.fields?.["x-amz-signature"]) {
-    throw new Error("Upload link is missing required fields.");
+    throw new Error("Magic link is missing required fields.");
   }
 
   const { bucket, prefix, maxBytes, expiresAt } = readPolicy(payload.fields.policy);

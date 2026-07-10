@@ -18,7 +18,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "bc924a1-dirty";
+const BUILD_COMMIT = "cc83697-dirty";
 
 const ASSET_VERSION = "20260708-100430";
 
@@ -195,7 +195,7 @@ function renderLinkBanner() {
   const note = document.createElement("div");
   note.className = "link-note";
   note.textContent = expired
-    ? `This upload link expired ${text} ago (${humanDate(LINK.expiresAt)}). Ask whoever sent it for a new one.`
+    ? `This magic link expired ${text} ago (${humanDate(LINK.expiresAt)}). Ask whoever sent it for a new one.`
     : `Reusable magic link, expires in ${text} (${humanDate(LINK.expiresAt)})`;
 
   linkBannerEl.append(dest, note);
@@ -300,7 +300,7 @@ function setSelection(files) {
   if (oversizeFiles.length) {
     const names = oversizeFiles.map((f) => `${f.name} (${humanBytes(f.size)})`).join(", ");
     setStatus(
-      `Too large for a presigned upload link, which is capped at ${humanBytes(LINK.maxBytes)} ` +
+      `Too large for a magic link, which is capped at ${humanBytes(LINK.maxBytes)} ` +
         `per file: ${names}. Remove these files, or upload them with S3 credentials.`,
       "error"
     );
@@ -1098,7 +1098,7 @@ function makeLinkUploader(link) {
     if (!link.maxBytes || file.size <= link.maxBytes) return;
     const err = new Error(
       `${key.split("/").pop()} is ${humanBytes(file.size)} after filtering, above the ` +
-        `${humanBytes(link.maxBytes)} per-file limit for presigned upload links.`
+        `${humanBytes(link.maxBytes)} per-file limit for magic links.`
     );
     err.updeaconCause = "size";
     throw err;
@@ -1108,13 +1108,13 @@ function makeLinkUploader(link) {
     async preflight(keyBase) {
       const { expired, text } = describeExpiry(link.expiresAt);
       if (expired) {
-        const err = new Error(`This upload link expired ${text} ago.`);
+        const err = new Error(`This magic link expired ${text} ago.`);
         err.updeaconCause = "link";
         throw err;
       }
       await checkReachable(link.endpoint, link.bucket);
       // Fail now, not after an hour of filtering; also records upload provenance
-      setStatus("Checking upload link …");
+      setStatus("Checking magic link …");
       await postObject({
         link,
         key: `${keyBase}/_CLIENT.json`,
@@ -1371,7 +1371,7 @@ function formatError(err) {
   }
   if (err?.updeaconCause === "link") {
     return (
-      `${msg}\nThis upload link is no longer valid. Ask whoever sent it for a new one.`
+      `${msg}\nThis magic link is no longer valid. Ask whoever sent it for a new one.`
     );
   }
   if (err?.updeaconCause === "cors") {

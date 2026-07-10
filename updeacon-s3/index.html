@@ -10,10 +10,11 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   /* Greens shared with sapiometer: text/border, fill, softer edge */
-  :root { --accent: #6d4fd8; --ok: #1a7f52; --ok-fill: #d9f0e2; --ok-edge: #a6dcc0; --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace; }
+  /* --accent-dark is --accent darkened for :hover; --accent-wash is it at ~8% on white */
+  :root { --accent: #6d4fd8; --accent-dark: #5d43b8; --accent-wash: #f3f1fc; --ok: #1a7f52; --ok-fill: #d9f0e2; --ok-edge: #a6dcc0; --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace; }
   body { font-family: 'Geist', system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; padding: 2rem; max-width: 720px; margin: 0 auto; }
   h1 { font-size: 1.5rem; font-weight: 400; margin-bottom: 0.5rem; }
-  .beta-tag { color: #713da7; font-size: 0.5em; font-weight: 400; vertical-align: super; }
+  .beta-tag { color: var(--accent); font-size: 0.5em; font-weight: 400; vertical-align: super; }
   .subtitle { color: #666; font-size: 0.9rem; }
   /* Section headings. Counter, not hardcoded numerals, so a hidden section (#creds
      in link mode) is skipped rather than leaving a gap. */
@@ -37,14 +38,14 @@
   .field-row .field { margin-bottom: 0; }
   .field label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; }
   .field input { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #ccc; font-family: var(--mono); font-size: 0.9rem; }
-  .field input:focus { outline: none; border-color: #713da7; }
+  .field input:focus { outline: none; border-color: var(--accent); }
   .name-input { display: flex; align-items: center; border: 1px solid #ccc; background: #fff; font-family: var(--mono); font-size: 0.9rem; }
-  .name-input:focus-within { border-color: #713da7; }
+  .name-input:focus-within { border-color: var(--accent); }
   .name-input .name-prefix { color: #999; white-space: nowrap; user-select: none; padding: 0.5rem 0 0.5rem 0.6rem; }
   .name-input input { flex: 1; min-width: 0; width: auto; border: none; padding: 0.5rem 0.6rem 0.5rem 0; font: inherit; background: transparent; }
   .name-input input:focus { outline: none; }
   .drop-zone { border: 1px dashed #aaa; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #fff; margin-bottom: 1rem; }
-  .drop-zone:hover, .drop-zone.dragover { border-color: #713da7; background: #f6effd; }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: var(--accent-wash); }
   /* Once loaded, mirror .index-status.loaded above it */
   .drop-zone.loaded { border-style: solid; border-color: var(--ok); background: var(--ok-fill); padding: 1rem; }
   .drop-zone input { display: none; }
@@ -81,11 +82,11 @@
   .index-status.needs-download { border-color: #aaa; }
   .index-status.failed { border-color: #d8a0a0; }
   .index-status.needs-download:hover, .index-status.needs-download.dragover,
-  .index-status.failed:hover, .index-status.failed.dragover { border-color: #713da7; background: #f6effd; }
+  .index-status.failed:hover, .index-status.failed.dragover { border-color: var(--accent); background: var(--accent-wash); }
   .actions { display: flex; gap: 0.6rem; align-items: center; }
   /* Primary (filled purple) */
-  button { background: #936dd0; color: #fff; border: 1px solid transparent; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: all 0.15s; }
-  button:hover:not(:disabled) { background: #835dc1; }
+  button { background: var(--accent); color: #fff; border: 1px solid transparent; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: all 0.15s; }
+  button:hover:not(:disabled) { background: var(--accent-dark); }
   /* Action buttons grey out while inactive, fill purple once their required fields are satisfied. */
   button:disabled { background: #ececec; color: #aaa; border-color: transparent; cursor: not-allowed; }
   /* Secondary (outlined): Reset = grey. Filter only uses the filled purple primary style. */
@@ -94,8 +95,8 @@
   #reset-btn:disabled { background: #fff; color: #ccc; border-color: #e8e8e8; }
   /* A brief pulsing glow when a button becomes clickable, to draw the eye. */
   @keyframes button-glow {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(147, 109, 208, 0); }
-    50%      { box-shadow: 0 0 11px 2px rgba(147, 109, 208, 0.6); }
+    0%, 100% { box-shadow: 0 0 0 0 rgba(109, 79, 216, 0); }
+    50%      { box-shadow: 0 0 11px 2px rgba(109, 79, 216, 0.6); }
   }
   button.pulse-glow { animation: button-glow 1.3s ease-in-out 3; }
   .progress-wrap { margin-top: 1rem; }
@@ -110,7 +111,7 @@
   #file-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #file-list .st { flex-shrink: 0; color: #888; }
   #file-list li.done .st { color: var(--ok); }
-  #file-list li.active .st { color: #713da7; }
+  #file-list li.active .st { color: var(--accent); }
   #file-list li.failed .st { color: #e74c3c; }
   #status { margin-top: 1rem; padding: 0.8rem; background: #fff; font-size: 0.9rem; min-height: 2.5rem; border: 1px solid #ddd; white-space: pre-line; }
   #status.error { border-color: #e74c3c; color: #e74c3c; }
@@ -136,8 +137,8 @@
   <ol id="usage-creds">
     <li>Press 'Download index', else drag & drop a local copy of <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx">panhuman-1</a>.</li>
     <li>Drag &amp; drop fasta/fastq files you wish to upload, or a directory containing them. Illumina R1/R2 files are paired automatically.</li>
-    <li>Enter S3-compatible object storage credentials and choose a descriptive name for your upload.</li>
-    <li>Press either 'Filter & upload' or 'Filter only', and keep the browser open until completion.</li>
+    <li>Enter S3-compatible object storage credentials.</li>
+    <li>Choose an upload name and then press 'Filter &amp; upload' or 'Filter only'.</li>
   </ol>
 </div>
 
