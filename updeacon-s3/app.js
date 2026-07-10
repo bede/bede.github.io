@@ -18,7 +18,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "399536f-dirty";
+const BUILD_COMMIT = "ca3288b-dirty";
 
 const ASSET_VERSION = "20260710-183617";
 

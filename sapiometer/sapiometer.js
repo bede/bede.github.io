@@ -166,7 +166,7 @@ function ensureIndexLoaded() {
       setStatus("Loading human index…");
       sendIndexToWorker(await cached.arrayBuffer());
     } else {
-      setStatus("Downloading human index…");
+      setStatus("Downloading a tiny panhuman index (26MB)…");
       const blob = await downloadIndex(INDEX_URL);
       await putCachedIndex(INDEX_URL, blob).catch((err) =>
         console.warn("updeacon: failed to cache index", err)
@@ -313,8 +313,8 @@ async function scanGroup(group, onProgressUpdate) {
 function tier(maxFrac) {
   if (maxFrac > HIGH_THRESHOLD)
     return { cls: "high-host", verdict: "High human content", note: "Share with caution." };
-  if (maxFrac > WARN_THRESHOLD) return { cls: "warn", verdict: "Moderate human content." };
-  return { cls: "pass", verdict: "Low human content." };
+  if (maxFrac > WARN_THRESHOLD) return { cls: "warn", verdict: "Moderate human content" };
+  return { cls: "pass", verdict: "Low human content" };
 }
 
 function resultText(result, verdict, note) {
