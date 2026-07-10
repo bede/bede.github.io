@@ -1,9 +1,10 @@
 // Updeacon client fa/fq dehosting & direct-to-s3 upload
 import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=20260708-100430";
-import { SEQ_RE, groupRelativePaths, pairSequenceFiles } from "./pairing.js";
+import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js";
 import {
   parseUploadLink,
   describeExpiry,
+  clientEnvironment,
   postObject,
   spoolToFile,
   spoolName,
@@ -17,7 +18,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "657f13f";
+const BUILD_COMMIT = "bc924a1-dirty";
 
 const ASSET_VERSION = "20260708-100430";
 
@@ -148,6 +149,19 @@ function credentialsFilled() {
   );
 }
 
+// What the user still has to do, given index, selection and mode
+function readyStatus() {
+  if (!indexLoaded) return "";
+  if (!selectedFiles.length) {
+    return LINK
+      ? "Index loaded. Select sequences to filter and upload"
+      : "Index loaded. Select sequences and enter S3 credentials";
+  }
+  if (LINK && linkExpired) return "";
+  if (!LINK && !credentialsFilled()) return "Enter S3 credentials to upload, or press 'Filter only'";
+  return "Press either 'Filter & upload' or 'Filter only' to begin";
+}
+
 function updateUploadEnabled() {
   if (!indexLoaded || uploadCompleted) {
     setButtonDisabled(uploadBtn, true);
@@ -176,13 +190,13 @@ function renderLinkBanner() {
 
   const dest = document.createElement("div");
   dest.className = "link-dest";
-  dest.textContent = `${LINK.bucket}/${LINK.prefix}`;
+  dest.textContent = `${LINK.bucket}/${LINK.prefix.replace(/\/$/, "")}`;
 
   const note = document.createElement("div");
   note.className = "link-note";
   note.textContent = expired
     ? `This upload link expired ${text} ago (${humanDate(LINK.expiresAt)}). Ask whoever sent it for a new one.`
-    : `Authorised upload — no credentials needed. Link expires in ${text} (${humanDate(LINK.expiresAt)}).`;
+    : `Reusable magic link, expires in ${text} (${humanDate(LINK.expiresAt)})`;
 
   linkBannerEl.append(dest, note);
 }
@@ -291,7 +305,7 @@ function setSelection(files) {
       "error"
     );
   } else {
-    setStatus("");
+    setStatus(readyStatus());
   }
   progressWrap.style.display = "none";
   renderFileList();
@@ -349,11 +363,7 @@ worker.onmessage = (e) => {
       const kw = /k=(\d+),\s*w=(\d+)/.exec(m.info || "");
       indexK = kw ? Number(kw[1]) : null;
       indexW = kw ? Number(kw[2]) : null;
-      setStatus(
-        LINK
-          ? "Index loaded. Select sequences to filter and upload"
-          : "Index loaded. Select sequences and enter S3 credentials"
-      );
+      setStatus(readyStatus());
       updateUploadEnabled();
       break;
     }
@@ -854,7 +864,11 @@ function readAllEntries(reader) {
 
 // --- Upload ------------------------------------------------------------------
 [bucketEl, serverEl, accessKeyEl, secretKeyEl].forEach((el) =>
-  el.addEventListener("input", updateUploadEnabled)
+  el.addEventListener("input", () => {
+    updateUploadEnabled();
+    // Don't overwrite an oversize/pairing error, or a live run's progress
+    if (!isUploading && !uploadCompleted && !oversizeFiles.length) setStatus(readyStatus());
+  })
 );
 
 // Tick the greyed "<timestamp>--" prefix; real value captured at upload start. Once committed,
@@ -973,8 +987,9 @@ async function filterOnly() {
     }
 
     dehostProgress.value = 100;
-    dehostLabel.textContent = `Processed ${humanBases(totalBasesIn)} of input across ${completed} group${completed === 1 ? "" : "s"}.`;
-    setStatus(`Filtering complete: ${completed} pair${completed === 1 ? "" : "s"} downloaded`, "success");
+    const done = describeGroups(groups.slice(0, completed));
+    dehostLabel.textContent = `Processed ${humanBases(totalBasesIn)} of input across ${done}.`;
+    setStatus(`Filtering complete: ${done} downloaded`, "success");
   } catch (err) {
     const idx = completed; // the file that failed
     if (rows[idx]) {
@@ -993,6 +1008,18 @@ async function filterOnly() {
 // --- Uploaders ----------------------------------------------------------------
 // Both expose preflight/uploadGroup/putSmall, so uploadAll() is mode-agnostic.
 // Credentials stream a group into a multipart upload; a POST needs it whole.
+
+// Written before filtering, so it records intent rather than outcome. Filter params
+// live in the per-file .deacon.json; don't repeat them here.
+function buildClientRecord() {
+  return {
+    started: new Date().toISOString(),
+    updeacon_commit: BUILD_COMMIT,
+    groups: selectedFiles.length,
+    input_bytes: totalBytes,
+    ...clientEnvironment(),
+  };
+}
 
 // RGW returns the CORS header on an anonymous 403, so this resolves iff CORS works
 async function checkReachable(endpoint, bucket) {
@@ -1086,13 +1113,13 @@ function makeLinkUploader(link) {
         throw err;
       }
       await checkReachable(link.endpoint, link.bucket);
-      // Fail now, not after an hour of filtering; also marks an abandoned run
+      // Fail now, not after an hour of filtering; also records upload provenance
       setStatus("Checking upload link …");
       await postObject({
         link,
-        key: `${keyBase}/_UPLOAD_STARTED.txt`,
-        body: new Blob([`${new Date().toISOString()}\n`], { type: "text/plain" }),
-        contentType: "text/plain",
+        key: `${keyBase}/_CLIENT.json`,
+        body: new Blob([JSON.stringify(buildClientRecord(), null, 2)], { type: "application/json" }),
+        contentType: "application/json",
       });
     },
     putSmall: (key, blob, contentType) => postObject({ link, key, body: blob, contentType }),
@@ -1258,7 +1285,8 @@ async function uploadAll() {
     }
 
     dehostProgress.value = 100;
-    dehostLabel.textContent = `Processed ${humanBases(totalBasesIn)} of input across ${completed} group${completed === 1 ? "" : "s"}.`;
+    dehostLabel.textContent =
+      `Processed ${humanBases(totalBasesIn)} of input across ${describeGroups(items.slice(0, completed))}.`;
 
     // Write the manifest last, signalling upload completion
     setStatus("Finalising (writing manifest) …");

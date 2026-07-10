@@ -82,6 +82,16 @@ export function pairSequenceFiles(files) {
   return groups;
 }
 
+// Count work groups the way a user sees them: "1 pair", "2 files", "1 pair and 2 files"
+export function describeGroups(groups) {
+  const pairs = groups.filter((group) => group.kind === "paired").length;
+  const files = groups.length - pairs;
+  const parts = [];
+  if (pairs) parts.push(`${pairs} pair${pairs === 1 ? "" : "s"}`);
+  if (files) parts.push(`${files} file${files === 1 ? "" : "s"}`);
+  return parts.join(" and ") || "0 files";
+}
+
 export function groupRelativePaths(group) {
   if (group.kind === "paired") {
     return {

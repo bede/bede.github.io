@@ -9,20 +9,32 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  :root { --accent: #6d4fd8; --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace; }
+  /* Greens shared with sapiometer: text/border, fill, softer edge */
+  :root { --accent: #6d4fd8; --ok: #1a7f52; --ok-fill: #d9f0e2; --ok-edge: #a6dcc0; --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace; }
   body { font-family: 'Geist', system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; padding: 2rem; max-width: 720px; margin: 0 auto; }
   h1 { font-size: 1.5rem; font-weight: 400; margin-bottom: 0.5rem; }
   .beta-tag { color: #713da7; font-size: 0.5em; font-weight: 400; vertical-align: super; }
-  .subtitle { color: #666; margin-bottom: 0.75rem; font-size: 0.9rem; }
-  .usage { color: #444; font-size: 0.9rem; margin-bottom: 1.25rem; }
+  .subtitle { color: #666; font-size: 0.9rem; }
+  /* Section headings. Counter, not hardcoded numerals, so a hidden section (#creds
+     in link mode) is skipped rather than leaving a gap. */
+  body { counter-reset: section; }
+  .section-head, .usage-head { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: #888; }
+  .section-head::before { content: counter(section) " "; color: var(--accent); }
+  /* Headings own the section break above them, so the gap doesn't depend on what
+     precedes; the preceding block's smaller margin-bottom collapses into it. */
+  .usage-head { margin: 1.5rem 0 0.5rem; }
+  .section-head { margin: 1.5rem 0 0.5rem; counter-increment: section; }
+  .usage { color: #444; font-size: 0.9rem; }
   .usage ol { list-style: none; counter-reset: step; margin: 0; padding: 0; }
   .usage li { position: relative; padding-left: 1.4rem; margin-bottom: 0.3rem; line-height: 1.45; }
   .usage li:last-child { margin-bottom: 0; }
   /* Mono numerals in place of default list markers. */
-  .usage li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 0.05em; color: #999; font-family: var(--mono); font-size: 0.85rem; }
+  .usage li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 0.05em; color: var(--accent); font-family: var(--mono); font-size: 0.85rem; }
   .field { margin-bottom: 1rem; }
-  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
-  .field-row .field { margin-bottom: 1rem; }
+  /* Grid items' margins don't collapse out of the container, so the row owns the
+     gap below it; otherwise .field's margin stacks on the next heading's. */
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-bottom: 1rem; }
+  .field-row .field { margin-bottom: 0; }
   .field label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; }
   .field input { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #ccc; font-family: var(--mono); font-size: 0.9rem; }
   .field input:focus { outline: none; border-color: #713da7; }
@@ -33,24 +45,28 @@
   .name-input input:focus { outline: none; }
   .drop-zone { border: 1px dashed #aaa; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #fff; margin-bottom: 1rem; }
   .drop-zone:hover, .drop-zone.dragover { border-color: #713da7; background: #f6effd; }
-  .drop-zone.loaded { border-color: #4caf50; background: #f0fff0; }
+  /* Once loaded, mirror .index-status.loaded above it */
+  .drop-zone.loaded { border-style: solid; border-color: var(--ok); background: var(--ok-fill); padding: 1rem; }
   .drop-zone input { display: none; }
-  .drop-zone .label { font-size: 0.95rem; color: #555; }
-  .drop-zone .summary { font-weight: 600; color: #333; margin-top: 0.5rem; }
+  /* .label matches .index-status .idx-info, .summary matches .index-status .filename */
+  .drop-zone .label { font-size: 0.8rem; color: #888; }
+  .drop-zone .summary { font-family: var(--mono); font-size: 0.9rem; color: #333; word-break: break-all; }
   .drop-zone .summary:empty { display: none; }
+  .drop-zone.loaded .label { margin-top: 0.3rem; }
   .drop-zone .filename { font-weight: 600; color: #333; margin-top: 0.5rem; }
   .drop-zone .filename:empty { display: none; }
   .drop-zone .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
   .drop-zone .idx-info:empty { display: none; }
   /* Presigned-link mode: stands in for the credential fields. */
-  .link-banner { border: 1px solid #4caf50; background: #f0fff0; padding: 0.8rem 1rem; margin-bottom: 1rem; text-align: center; }
+  .link-banner { border: 1px solid var(--ok); background: var(--ok-fill); padding: 0.8rem 1rem; margin: 1.5rem 0 1rem; text-align: center; }
   .link-banner .link-dest { font-family: var(--mono); font-size: 0.9rem; color: #333; word-break: break-all; }
   .link-banner .link-note { font-size: 0.8rem; color: #666; margin-top: 0.3rem; }
   .link-banner.expired { border-color: #e74c3c; background: #fff5f5; }
   .link-banner.expired .link-note { color: #e74c3c; }
   .index-status { border: 1px solid #ddd; background: #fff; padding: 1rem; margin-bottom: 1rem; transition: all 0.2s; text-align: center; }
   .index-status input { display: none; }
-  .index-status .filename { color: #333; }
+  /* Matches .link-banner .link-dest */
+  .index-status .filename { font-family: var(--mono); font-size: 0.9rem; color: #333; word-break: break-all; }
   .index-status .filename:empty { display: none; }
   .index-status progress { width: 100%; margin-top: 0.5rem; }
   .index-status .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
@@ -60,13 +76,13 @@
   @keyframes loading-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75%, 100% { content: "..."; } }
   .index-status .index-actions { display: flex; gap: 0.8rem; justify-content: center; }
   .index-status button { margin-bottom: 0.6rem; padding: 0.4rem 1rem; font-size: 0.85rem; }
-  .index-status.loaded { border-color: #4caf50; background: #f0fff0; }
+  .index-status.loaded { border-color: var(--ok); background: var(--ok-fill); }
   .index-status.needs-download, .index-status.failed { border-width: 1px; border-style: dashed; cursor: pointer; }
   .index-status.needs-download { border-color: #aaa; }
   .index-status.failed { border-color: #d8a0a0; }
   .index-status.needs-download:hover, .index-status.needs-download.dragover,
   .index-status.failed:hover, .index-status.failed.dragover { border-color: #713da7; background: #f6effd; }
-  .actions { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.4rem; }
+  .actions { display: flex; gap: 0.6rem; align-items: center; }
   /* Primary (filled purple) */
   button { background: #936dd0; color: #fff; border: 1px solid transparent; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: all 0.15s; }
   button:hover:not(:disabled) { background: #835dc1; }
@@ -88,17 +104,17 @@
   progress[value]::-webkit-progress-value { background: #6c757d; }
   progress[value]::-moz-progress-bar { background: #6c757d; }
   .progress-label { font-size: 0.85rem; color: #555; margin-top: 0.3rem; }
-  #file-list { list-style: none; margin-top: 0.6rem; font-family: var(--mono); font-size: 0.8rem; max-height: 14rem; overflow-y: auto; border: 1px solid #ddd; background: #fff; }
+  #file-list { list-style: none; margin-top: 1rem; font-family: var(--mono); font-size: 0.8rem; max-height: 14rem; overflow-y: auto; border: 1px solid #ddd; background: #fff; }
   #file-list li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0.6rem; border-bottom: 1px solid #f0f0f0; }
   #file-list li:last-child { border-bottom: none; }
   #file-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #file-list .st { flex-shrink: 0; color: #888; }
-  #file-list li.done .st { color: #4caf50; }
+  #file-list li.done .st { color: var(--ok); }
   #file-list li.active .st { color: #713da7; }
   #file-list li.failed .st { color: #e74c3c; }
   #status { margin-top: 1rem; padding: 0.8rem; background: #fff; font-size: 0.9rem; min-height: 2.5rem; border: 1px solid #ddd; white-space: pre-line; }
   #status.error { border-color: #e74c3c; color: #e74c3c; }
-  #status.success { border-color: #4caf50; color: #4caf50; }
+  #status.success { border-color: var(--ok-edge); color: var(--ok); }
   .info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
   #purge-index { font-size: 0.7rem; color: #bbb; }
   #purge-index:hover { color: #888; }
@@ -109,14 +125,13 @@
 <body>
 <h1>updeacon-s3 <span class="beta-tag">alpha</span></h1>
 <p class="subtitle">Securely dehost and upload DNA sequences in fasta/fastq format directly to S3 object storage.
-  Runs <a href="https://github.com/bede/deacon">Deacon</a> in the browser to deplete human sequences prior to upload. FASTQ files are uploaded to a timestamped directory prefix in the specified bucket. Nested directory structures are preserved.</p>
+  Runs <a href="https://github.com/bede/deacon">Deacon</a> in the browser to deplete human sequences prior to upload. FASTQ files are uploaded to a timestamped path prefix. Nested directory structures are preserved.</p>
+<div class="usage-head">Usage</div>
 <div class="usage">
   <ol id="usage-link" hidden>
-    <li>Press 'Download index', else drag &amp; drop a local copy of <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx">panhuman-1</a>.</li>
+    <li>Press 'Download index', or wait for the cached copy of <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx">panhuman-1</a> to load.</li>
     <li>Drag &amp; drop fasta/fastq files you wish to upload, or a directory containing them. Illumina R1/R2 files are paired automatically.</li>
-    <li>Choose a descriptive name for your upload. This link already authorises it, so no credentials are needed.</li>
-    <li>Press either 'Filter &amp; upload' or 'Filter only', and keep the browser open until completion.</li>
-    <li>Reuse this link until it expires; each upload lands in its own timestamped folder.</li>
+    <li>Choose an upload name and then press 'Filter &amp; upload' or 'Filter only'.</li>
   </ol>
   <ol id="usage-creds">
     <li>Press 'Download index', else drag & drop a local copy of <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx">panhuman-1</a>.</li>
@@ -127,6 +142,8 @@
 </div>
 
 <div class="link-banner" id="link-banner" hidden></div>
+
+<div class="section-head">Index</div>
 
 <div class="index-status" id="index-status">
   <input type="file" id="index-input" accept=".idx,.pidx">
@@ -139,13 +156,16 @@
   <div class="idx-info" id="index-info"></div>
 </div>
 
+<div class="section-head">Sequences</div>
+
 <div class="drop-zone" id="dir-zone">
   <input type="file" id="dir-input" webkitdirectory directory multiple>
-  <div class="label">Drop a directory of fasta/fastq[.gz] files, or click to select.</div>
   <div class="summary" id="dir-summary"></div>
+  <div class="label">Drop a directory of fasta/fastq[.gz] files, or click to select.</div>
 </div>
 
 <div id="creds">
+  <div class="section-head">Destination</div>
   <div class="field-row">
     <div class="field">
       <label for="server">Server address</label>
@@ -169,11 +189,12 @@
   </div>
 </div>
 
+<div class="section-head">Upload name (optional)</div>
+
 <div class="field">
-  <label for="run-name">Upload name (optional)</label>
   <div class="name-input">
     <span class="name-prefix" id="name-prefix"></span>
-    <input type="text" id="run-name" autocomplete="off" spellcheck="false" placeholder="name">
+    <input type="text" id="run-name" aria-label="Upload name" autocomplete="off" spellcheck="false" placeholder="name">
   </div>
 </div>
 

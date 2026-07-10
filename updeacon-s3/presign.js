@@ -98,6 +98,20 @@ export function describeExpiry(expiresAt, now = Date.now()) {
   return { expired: ms <= 0, text };
 }
 
+// Provenance for an upload; never include location.href, the fragment holds the signature
+export function clientEnvironment() {
+  const nav = typeof navigator === "undefined" ? {} : navigator;
+  const env = {
+    user_agent: nav.userAgent || null,
+    platform: nav.userAgentData?.platform || nav.platform || null,
+    languages: [...(nav.languages || [])],
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+    hardware_concurrency: nav.hardwareConcurrency ?? null,
+  };
+  if (nav.deviceMemory) env.device_memory_gb = nav.deviceMemory; // Chromium only
+  return env;
+}
+
 function s3Error(xhr) {
   let code = "";
   let message = "";
