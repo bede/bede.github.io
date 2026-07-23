@@ -18,7 +18,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "1f016d0-dirty";
+const BUILD_COMMIT = "f2ee068-dirty";
 
 const ASSET_VERSION = "20260710-183617";
 
@@ -287,7 +287,7 @@ function setSelection(files) {
   if (seqs.length === 0) {
     dirZone.classList.remove("loaded");
     dirSummary.textContent = files.length
-      ? "No fastq/fasta files found in that folder"
+      ? "No fastq/fasta files found in selection"
       : "";
   } else {
     dirZone.classList.add("loaded");
