@@ -18,7 +18,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "ca3288b-dirty";
+const BUILD_COMMIT = "1f016d0-dirty";
 
 const ASSET_VERSION = "20260710-183617";
 
@@ -28,8 +28,8 @@ const QUEUE_SIZE = 4;
 const MAX_INDEX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 
 const INDEX_URL =
-  "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w21.pidx";
-const INDEX_FILENAME = "panhuman-1.k31w21.pidx";
+  "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w25c9b16.pidx";
+const INDEX_FILENAME = "panhuman-1.k31w25c9b16.pidx";
 const INDEX_DISPLAY_NAME = "Index: panhuman-1"; // shown in panel; filename kept for summaries
 
 // --- Upload link --------------------------------------------------------------

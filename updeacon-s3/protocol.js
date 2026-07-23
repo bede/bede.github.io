@@ -21,7 +21,7 @@ export const STAGE = Object.freeze({
 export const FILTER_DEFAULTS = Object.freeze({
   deplete: true,
   absThreshold: 2,
-  relThreshold: 0.05,
+  relThreshold: 0.02,
   prefixLength: 0,
   rename: false,
   outputFasta: false,
