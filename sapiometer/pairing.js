@@ -1,8 +1,8 @@
 export const SEQ_RE = /\.(fastq|fq|fasta|fa)(\.gz)?$/i;
 
 const MATE_PATTERNS = [
-  /(^|[._-])R([12])(?=([._-]|$))/i,
-  /(^|[._-])([12])$/,
+  /(^|[._])R([12])(?=([._-]|$))/i,
+  /(_)([12])$/,
 ];
 
 function relativePath(file) {
@@ -34,13 +34,32 @@ function mateInfo(file) {
       mate,
       key: `${dir}/${keyStem}`.replace(/^\//, ""),
       dir,
+      bareDigit: pattern === MATE_PATTERNS[MATE_PATTERNS.length - 1],
     };
   }
   return null;
 }
 
+// Group every "<dir>/<prefix>_" onto the set of trailing integers that follow it,
+// so we can tell a true _1/_2 mate pair from ONT read chunks numbered _0, _1, _2, _3, …
+function numericSiblingSets(seqs) {
+  const sets = new Map();
+  for (const file of seqs) {
+    const { dir, name } = splitPath(relativePath(file));
+    const stem = stripSeqExt(name);
+    const match = /_(\d+)$/.exec(stem);
+    if (!match) continue;
+    const prefixKey = `${dir}/${stem.slice(0, match.index + 1)}`.replace(/^\//, "");
+    const set = sets.get(prefixKey) || new Set();
+    set.add(Number(match[1]));
+    sets.set(prefixKey, set);
+  }
+  return sets;
+}
+
 export function pairSequenceFiles(files) {
   const seqs = files.filter((file) => SEQ_RE.test(file.name));
+  const numericSiblings = numericSiblingSets(seqs);
   const pairBuckets = new Map();
   const singles = [];
 
@@ -49,6 +68,16 @@ export function pairSequenceFiles(files) {
     if (!info) {
       singles.push(file);
       continue;
+    }
+    if (info.bareDigit) {
+      // Only pair bare _1/_2 when they are the *only* numbered files sharing this
+      // prefix; any other number (_3, _4) means these are treated as ONT.
+      const numbers = numericSiblings.get(info.key.replace("{mate}", ""));
+      const onlyMates = numbers && [...numbers].every((n) => n === 1 || n === 2);
+      if (!onlyMates) {
+        singles.push(file);
+        continue;
+      }
     }
     const bucket = pairBuckets.get(info.key) || { r1: [], r2: [] };
     bucket[info.mate].push(file);
