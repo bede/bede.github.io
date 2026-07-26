@@ -20,7 +20,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "7492021-dirty";
+const BUILD_COMMIT = "dabb9a5-dirty";
 
 const ASSET_VERSION = "20260710-183617";
 
@@ -1121,6 +1121,7 @@ function makeCredentialUploader() {
 
 function makeLinkUploader(link) {
   let spoolSeq = 0;
+  let runStatus = "";
 
   const retryStatus = (key, info) => {
     const leaf = key.split("/").pop();
@@ -1129,7 +1130,7 @@ function makeLinkUploader(link) {
       return;
     }
     if (info.resumed) {
-      setStatus(`Connection restored. Retrying ${leaf} …`);
+      setStatus(runStatus || `Retrying ${leaf} …`);
       return;
     }
     const secs = Math.max(1, Math.ceil((info.waitMs || 0) / 1000));
@@ -1158,6 +1159,7 @@ function makeLinkUploader(link) {
 
   return {
     async preflight(keyBase) {
+      runStatus = `Filtering and uploading to ${keyBase}`;
       const { expired, text } = describeExpiry(link.expiresAt);
       if (expired) {
         const err = new Error(`This magic link expired ${text} ago.`);
