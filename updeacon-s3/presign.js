@@ -5,6 +5,8 @@
 
 const SPOOL_DIR = "updeacon-spool";
 const STALE_SPOOL_MS = 6 * 60 * 60 * 1000; // don't reap a sibling tab's live spools
+const RETRY_BASE_MS = 1000;
+const RETRY_MAX_MS = 60 * 1000;
 
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
 
@@ -113,50 +115,212 @@ export function clientEnvironment() {
 }
 
 function s3Error(xhr) {
+  return s3ErrorFromText(xhr.status, xhr.statusText, xhr.responseText || "");
+}
+
+function s3ErrorFromText(status, statusText, text) {
   let code = "";
   let message = "";
   try {
-    const doc = new DOMParser().parseFromString(xhr.responseText || "", "text/xml");
-    code = doc.querySelector("Code")?.textContent || "";
-    message = doc.querySelector("Message")?.textContent || "";
+    if (typeof DOMParser !== "undefined") {
+      const doc = new DOMParser().parseFromString(text || "", "text/xml");
+      code = doc.querySelector("Code")?.textContent || "";
+      message = doc.querySelector("Message")?.textContent || "";
+    } else {
+      code = /<Code>([^<]+)<\/Code>/.exec(text || "")?.[1] || "";
+      message = /<Message>([^<]+)<\/Message>/.exec(text || "")?.[1] || "";
+    }
   } catch (_) {
     // Non-XML body
   }
-  const err = new Error(message || `HTTP ${xhr.status} ${xhr.statusText}`);
+  const err = new Error(message || `HTTP ${status} ${statusText}`);
   err.name = code || "UploadError";
-  err.status = xhr.status;
-  if (xhr.status === 403 || /AccessDenied|Expired|SignatureDoesNotMatch|Policy/i.test(code)) {
+  err.status = status;
+  if (status === 403 || /AccessDenied|Expired|SignatureDoesNotMatch|Policy/i.test(code)) {
     err.updeaconCause = "link";
   }
   return err;
 }
 
-// The xhr.upload listener forces a CORS preflight on every POST
-export function postObject({ link, key, body, contentType = "application/octet-stream", onProgress }) {
-  return new Promise((resolve, reject) => {
-    const form = new FormData();
-    form.append("key", key);
-    for (const [name, value] of Object.entries(link.fields)) form.append(name, value);
-    form.append("Content-Type", contentType);
-    form.append("file", body); // Must be the last field
+function uploadTransportError(message = "Can't reach the object store from this page.", attrs = {}) {
+  const err = new Error(message);
+  err.updeaconCause = "network";
+  Object.assign(err, attrs);
+  return err;
+}
 
+function withOfflineAbort(abort) {
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") return () => {};
+  const onOffline = () => abort(uploadTransportError("Connection lost during upload.", { offline: true }));
+  window.addEventListener("offline", onOffline, { once: true });
+  return () => window.removeEventListener("offline", onOffline);
+}
+
+function postForm({ link, key, body, contentType = "application/octet-stream" }) {
+  const form = new FormData();
+  form.append("key", key);
+  for (const [name, value] of Object.entries(link.fields)) form.append(name, value);
+  form.append("Content-Type", contentType);
+  form.append("file", body); // Must be the last field
+  return form;
+}
+
+async function postObjectFetch({ link, key, body, contentType = "application/octet-stream" }) {
+  let resp;
+  let offlineErr = null;
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const removeOffline = ctrl
+    ? withOfflineAbort((err) => {
+        offlineErr = err;
+        ctrl.abort();
+      })
+    : () => {};
+  try {
+    resp = await fetch(`${link.endpoint}/${link.bucket}`, {
+      method: "POST",
+      body: postForm({ link, key, body, contentType }),
+      credentials: "omit",
+      cache: "no-store",
+      ...(ctrl && { signal: ctrl.signal }),
+    });
+  } catch (_) {
+    if (offlineErr) throw offlineErr;
+    throw uploadTransportError();
+  } finally {
+    removeOffline();
+  }
+  if (resp.ok) return;
+  throw s3ErrorFromText(resp.status, resp.statusText, await resp.text().catch(() => ""));
+}
+
+// XHR is only for progress; it forces preflight.
+function postObjectXhr({ link, key, body, contentType = "application/octet-stream", onProgress }) {
+  return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    let settled = false;
+    let offlineErr = null;
+    let removeOffline = () => {};
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      removeOffline();
+      fn(value);
+    };
+    removeOffline = withOfflineAbort((err) => {
+      offlineErr = err;
+      xhr.abort();
+    });
     xhr.open("POST", `${link.endpoint}/${link.bucket}`);
     if (onProgress) {
       // fetch() can't report upload progress
       xhr.upload.onprogress = (e) => onProgress(e.loaded, e.total);
     }
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(s3Error(xhr));
+      if (xhr.status >= 200 && xhr.status < 300) finish(resolve);
+      else finish(reject, s3Error(xhr));
     };
-    xhr.onerror = () => {
-      const err = new Error("Can't reach the object store from this page.");
-      err.updeaconCause = "cors";
-      reject(err);
-    };
-    xhr.send(form);
+    xhr.onerror = () => finish(reject, uploadTransportError());
+    xhr.ontimeout = () => finish(reject, uploadTransportError("Upload timed out."));
+    xhr.onabort = () => finish(reject, offlineErr || uploadTransportError("Upload was interrupted."));
+    xhr.send(postForm({ link, key, body, contentType }));
   });
+}
+
+export function postObject(args) {
+  if (!args.onProgress && typeof fetch === "function") return postObjectFetch(args);
+  return postObjectXhr(args);
+}
+
+export function retryDelayMs(attempt, { baseMs = RETRY_BASE_MS, maxMs = RETRY_MAX_MS } = {}) {
+  return Math.min(maxMs, baseMs * 2 ** Math.max(0, attempt - 1));
+}
+
+export function isRetryableUploadError(err) {
+  if (!err) return false;
+  if (err.updeaconCause === "network") return true;
+  if (err.updeaconCause === "link" || err.updeaconCause === "size" || err.updeaconCause === "cors") {
+    return false;
+  }
+  return err.status === 408 || err.status === 429 || (err.status >= 500 && err.status < 600);
+}
+
+export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export function waitForOnline() {
+  if (typeof navigator === "undefined" || navigator.onLine !== false) return Promise.resolve();
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") return sleep(RETRY_MAX_MS);
+  return new Promise((resolve) => window.addEventListener("online", resolve, { once: true }));
+}
+
+function linkExpiredError(link, now = Date.now()) {
+  const { expired, text } = describeExpiry(link.expiresAt, now);
+  if (!expired) return null;
+  const err = new Error(`This magic link expired ${text} ago.`);
+  err.updeaconCause = "link";
+  return err;
+}
+
+async function waitWhileOffline({ attempt, link, onRetry, sleepFn, waitOnlineFn, nowFn }) {
+  let waited = false;
+  while (typeof navigator !== "undefined" && navigator.onLine === false) {
+    waited = true;
+    const waitMs = Math.min(RETRY_MAX_MS, Math.max(0, link.expiresAt - nowFn()));
+    onRetry?.({ attempt, waitingOnline: true, waitMs });
+    await Promise.race([waitOnlineFn(), sleepFn(waitMs)]);
+    const expired = linkExpiredError(link, nowFn());
+    if (expired) throw expired;
+  }
+  return waited;
+}
+
+export async function postObjectWithRetry({
+  onRetry,
+  sleepFn = sleep,
+  waitOnlineFn = waitForOnline,
+  nowFn = Date.now,
+  postOnce = postObject,
+  ...args
+}) {
+  let attempt = 0;
+  for (;;) {
+    const expired = linkExpiredError(args.link, nowFn());
+    if (expired) throw expired;
+    if (await waitWhileOffline({
+      attempt,
+      link: args.link,
+      onRetry,
+      sleepFn,
+      waitOnlineFn,
+      nowFn,
+    })) {
+      onRetry?.({ attempt, resumed: true });
+    }
+
+    try {
+      return await postOnce(args);
+    } catch (err) {
+      if (!isRetryableUploadError(err)) throw err;
+
+      attempt++;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        if (await waitWhileOffline({
+          attempt,
+          link: args.link,
+          onRetry: (info) => onRetry?.({ ...info, error: err }),
+          sleepFn,
+          waitOnlineFn,
+          nowFn,
+        })) {
+          onRetry?.({ attempt, resumed: true, error: err });
+        }
+        continue;
+      }
+
+      const waitMs = Math.min(retryDelayMs(attempt), Math.max(0, args.link.expiresAt - nowFn()));
+      onRetry?.({ attempt, waitMs, error: err });
+      await sleepFn(waitMs);
+    }
+  }
 }
 
 export function spoolSupported() {

@@ -5,7 +5,9 @@ import {
   parseUploadLink,
   describeExpiry,
   clientEnvironment,
-  postObject,
+  postObjectWithRetry,
+  sleep,
+  waitForOnline,
   spoolToFile,
   spoolName,
   releaseSpool,
@@ -18,7 +20,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "7402da9-dirty";
+const BUILD_COMMIT = "7492021-dirty";
 
 const ASSET_VERSION = "20260710-183617";
 
@@ -1026,14 +1028,37 @@ function buildClientRecord() {
 }
 
 // RGW returns the CORS header on an anonymous 403, so this resolves iff CORS works
-async function checkReachable(endpoint, bucket) {
+async function checkReachable(endpoint, bucket, { retryOffline = false, expiresAt = null, onRetry } = {}) {
   setStatus("Checking connection …");
-  try {
-    await fetch(`${endpoint}/${bucket}`, { method: "GET", credentials: "omit", cache: "no-store" });
-  } catch (_) {
-    const err = new Error("Can't reach the object store from this page.");
-    err.updeaconCause = "cors";
-    throw err;
+  for (;;) {
+    while (retryOffline && typeof navigator !== "undefined" && navigator.onLine === false) {
+      const waitMs = expiresAt ? Math.min(60 * 1000, Math.max(0, expiresAt - Date.now())) : 60 * 1000;
+      onRetry?.({ waitingOnline: true, waitMs });
+      await Promise.race([waitForOnline(), sleep(waitMs)]);
+      if (expiresAt && Date.now() >= expiresAt) {
+        const expired = new Error("This magic link expired while waiting for the connection to return.");
+        expired.updeaconCause = "link";
+        throw expired;
+      }
+    }
+    try {
+      await fetch(`${endpoint}/${bucket}`, { method: "GET", credentials: "omit", cache: "no-store" });
+      return;
+    } catch (_) {
+      const err = new Error("Can't reach the object store from this page.");
+      err.updeaconCause =
+        typeof navigator !== "undefined" && navigator.onLine === false ? "network" : "cors";
+      if (!retryOffline || err.updeaconCause !== "network") throw err;
+      const waitMs = expiresAt ? Math.min(60 * 1000, Math.max(0, expiresAt - Date.now())) : 60 * 1000;
+      onRetry?.({ waitingOnline: true, waitMs, error: err });
+      await Promise.race([waitForOnline(), sleep(waitMs)]);
+      if (expiresAt && Date.now() >= expiresAt) {
+        const expired = new Error("This magic link expired while waiting for the connection to return.");
+        expired.updeaconCause = "link";
+        throw expired;
+      }
+      setStatus("Checking connection …");
+    }
   }
 }
 
@@ -1097,6 +1122,29 @@ function makeCredentialUploader() {
 function makeLinkUploader(link) {
   let spoolSeq = 0;
 
+  const retryStatus = (key, info) => {
+    const leaf = key.split("/").pop();
+    if (info.waitingOnline) {
+      setStatus(`Connection lost. Waiting to retry ${leaf} when the browser is online …`, "waiting");
+      return;
+    }
+    if (info.resumed) {
+      setStatus(`Connection restored. Retrying ${leaf} …`);
+      return;
+    }
+    const secs = Math.max(1, Math.ceil((info.waitMs || 0) / 1000));
+    setStatus(`Connection interrupted while uploading ${leaf}. Retrying in ${secs}s …`);
+  };
+
+  const post = ({ onUploadRetry, ...args }) =>
+    postObjectWithRetry({
+      ...args,
+      onRetry: (info) => {
+        onUploadRetry?.(info);
+        retryStatus(args.key, info);
+      },
+    });
+
   // Definitive check; the input-size test in setSelection() is early warning
   const checkSize = (key, file) => {
     if (!link.maxBytes || file.size <= link.maxBytes) return;
@@ -1116,17 +1164,21 @@ function makeLinkUploader(link) {
         err.updeaconCause = "link";
         throw err;
       }
-      await checkReachable(link.endpoint, link.bucket);
+      await checkReachable(link.endpoint, link.bucket, {
+        retryOffline: true,
+        expiresAt: link.expiresAt,
+        onRetry: (info) => retryStatus(`${keyBase}/_CLIENT.json`, info),
+      });
       // Fail now, not after an hour of filtering; also records upload provenance
       setStatus("Checking magic link …");
-      await postObject({
+      await post({
         link,
         key: `${keyBase}/_CLIENT.json`,
         body: new Blob([JSON.stringify(buildClientRecord(), null, 2)], { type: "application/json" }),
         contentType: "application/json",
       });
     },
-    putSmall: (key, blob, contentType) => postObject({ link, key, body: blob, contentType }),
+    putSmall: (key, blob, contentType) => post({ link, key, body: blob, contentType }),
     async uploadGroup(item, outputs, hooks) {
       const specs =
         item.kind === "paired"
@@ -1145,11 +1197,12 @@ function makeLinkUploader(link) {
         hooks.onUploadStart(files.reduce((n, f) => n + f.size, 0));
         let done = 0;
         for (let i = 0; i < specs.length; i++) {
-          await postObject({
+          await post({
             link,
             key: specs[i].key,
             body: files[i],
             onProgress: (loaded) => hooks.onUploadProgress(done + loaded),
+            onUploadRetry: () => hooks.onUploadProgress(done),
           });
           done += files[i].size;
         }
@@ -1383,6 +1436,9 @@ function formatError(err) {
       `Connection failed. Couldn't reach the object store from this page. The ` +
       `bucket must allow PUT/POST from this origin and expose the ETag header.`
     );
+  }
+  if (err?.updeaconCause === "network") {
+    return `${msg} Check your internet connection and try again.`;
   }
   // fetch() throws TypeError on network/CORS failures; message varies by browser
   if (
