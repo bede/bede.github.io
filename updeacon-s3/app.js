@@ -20,7 +20,7 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "dabb9a5-dirty";
+const BUILD_COMMIT = "e2c0006-dirty";
 
 const ASSET_VERSION = "20260710-183617";
 
@@ -1126,7 +1126,7 @@ function makeLinkUploader(link) {
   const retryStatus = (key, info) => {
     const leaf = key.split("/").pop();
     if (info.waitingOnline) {
-      setStatus(`Connection lost. Waiting to retry ${leaf} when the browser is online …`, "waiting");
+      setStatus(`Connection lost. Waiting to retry ${leaf} …`, "waiting");
       return;
     }
     if (info.resumed) {
