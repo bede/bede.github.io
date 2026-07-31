@@ -1,9 +1,9 @@
-import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=20260710-183617";
+import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=121a98f-dirty-20260731104053";
 
 // Off-main-thread WASM dehosting; pull-driven (one batch per MSG.PULL) so memory stays bounded
 let wasm = null;
 let index = null;
-const ASSET_VERSION = "20260710-183617";
+const ASSET_VERSION = "121a98f-dirty-20260731104053";
 const OUTPUT_BATCH_BYTES = 4 * 1024 * 1024; // 4 MiB
 
 // wasm-bindgen throws Result errors as plain strings with no .message; normalise so the reason survives

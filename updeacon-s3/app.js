@@ -1,18 +1,13 @@
 // Updeacon client fa/fq dehosting & direct-to-s3 upload
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=20260710-183617";
-import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=121a98f-dirty-20260731104053";
+import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js?v=121a98f-dirty-20260731104053";
 import {
   parseUploadLink,
   describeExpiry,
   clientEnvironment,
-  postObjectWithRetry,
-  sleep,
-  waitForOnline,
-  spoolToFile,
-  spoolName,
-  releaseSpool,
   purgeStaleSpools,
-} from "./presign.js?v=20260710-183617";
+} from "./presign.js?v=121a98f-dirty-20260731104053";
+import { makeCredentialUploader, makeLinkUploader } from "./uploaders.js?v=121a98f-dirty-20260731104053";
 
 // --- Fixed configuration -----------------------------------------------------
 // Ceph RADOS Gateway, not AWS: dummy region, forcePathStyle required (no vhost buckets)
@@ -20,9 +15,9 @@ const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "e2c0006-dirty";
+const BUILD_COMMIT = "121a98f-dirty-20260731104053";
 
-const ASSET_VERSION = "20260710-183617";
+const ASSET_VERSION = "121a98f-dirty-20260731104053";
 
 const PART_SIZE = 8 * 1024 * 1024;
 const QUEUE_SIZE = 4;
@@ -1027,195 +1022,6 @@ function buildClientRecord() {
   };
 }
 
-// RGW returns the CORS header on an anonymous 403, so this resolves iff CORS works
-async function checkReachable(endpoint, bucket, { retryOffline = false, expiresAt = null, onRetry } = {}) {
-  setStatus("Checking connection …");
-  for (;;) {
-    while (retryOffline && typeof navigator !== "undefined" && navigator.onLine === false) {
-      const waitMs = expiresAt ? Math.min(60 * 1000, Math.max(0, expiresAt - Date.now())) : 60 * 1000;
-      onRetry?.({ waitingOnline: true, waitMs });
-      await Promise.race([waitForOnline(), sleep(waitMs)]);
-      if (expiresAt && Date.now() >= expiresAt) {
-        const expired = new Error("This magic link expired while waiting for the connection to return.");
-        expired.updeaconCause = "link";
-        throw expired;
-      }
-    }
-    try {
-      await fetch(`${endpoint}/${bucket}`, { method: "GET", credentials: "omit", cache: "no-store" });
-      return;
-    } catch (_) {
-      const err = new Error("Can't reach the object store from this page.");
-      err.updeaconCause =
-        typeof navigator !== "undefined" && navigator.onLine === false ? "network" : "cors";
-      if (!retryOffline || err.updeaconCause !== "network") throw err;
-      const waitMs = expiresAt ? Math.min(60 * 1000, Math.max(0, expiresAt - Date.now())) : 60 * 1000;
-      onRetry?.({ waitingOnline: true, waitMs, error: err });
-      await Promise.race([waitForOnline(), sleep(waitMs)]);
-      if (expiresAt && Date.now() >= expiresAt) {
-        const expired = new Error("This magic link expired while waiting for the connection to return.");
-        expired.updeaconCause = "link";
-        throw expired;
-      }
-      setStatus("Checking connection …");
-    }
-  }
-}
-
-function makeCredentialUploader() {
-  const accessKeyId = accessKeyEl.value.trim();
-  const secretAccessKey = secretKeyEl.value.trim();
-  const bucket = bucketEl.value.trim();
-  const endpoint = serverEl.value.trim();
-  let client = null;
-  let Upload = null;
-
-  const put = (key, body, contentType, onProgress) => {
-    const up = new Upload({
-      client,
-      params: { Bucket: bucket, Key: key, Body: body, ...(contentType && { ContentType: contentType }) },
-      queueSize: QUEUE_SIZE,
-      partSize: PART_SIZE,
-    });
-    if (onProgress) up.on("httpUploadProgress", (p) => onProgress(p.loaded || 0));
-    return up.done();
-  };
-
-  return {
-    async preflight(keyBase) {
-      // Only credential mode needs the SDK; link mode never downloads it
-      const sdk = await import("./vendor/aws-sdk.js");
-      Upload = sdk.Upload;
-      client = new sdk.S3Client({
-        endpoint,
-        region: REGION,
-        forcePathStyle: true,
-        credentials: { accessKeyId, secretAccessKey },
-      });
-      await checkReachable(endpoint, bucket);
-      // CORS passed, so any failure here is credentials
-      setStatus("Checking credentials …");
-      try {
-        await put(`${keyBase}/_ACCESS_KEY_ID.txt`, new Blob([accessKeyId], { type: "text/plain" }), "text/plain");
-      } catch (err) {
-        err.updeaconCause = "credentials";
-        throw err;
-      }
-    },
-    putSmall: (key, blob, contentType) => put(key, blob, contentType),
-    async uploadGroup(item, outputs, hooks) {
-      if (item.kind !== "paired") {
-        await put(item.key, outputs.stream, null, hooks.onUploadProgress);
-        return [item.key];
-      }
-      let r1 = 0;
-      let r2 = 0;
-      await Promise.all([
-        put(item.key, outputs.streamR1, null, (n) => hooks.onUploadProgress((r1 = n) + r2)),
-        put(item.key2, outputs.streamR2, null, (n) => hooks.onUploadProgress(r1 + (r2 = n))),
-      ]);
-      return [item.key, item.key2];
-    },
-  };
-}
-
-function makeLinkUploader(link) {
-  let spoolSeq = 0;
-  let runStatus = "";
-
-  const retryStatus = (key, info) => {
-    const leaf = key.split("/").pop();
-    if (info.waitingOnline) {
-      setStatus(`Connection lost. Waiting to retry ${leaf} …`, "waiting");
-      return;
-    }
-    if (info.resumed) {
-      setStatus(runStatus || `Retrying ${leaf} …`);
-      return;
-    }
-    const secs = Math.max(1, Math.ceil((info.waitMs || 0) / 1000));
-    setStatus(`Connection interrupted while uploading ${leaf}. Retrying in ${secs}s …`);
-  };
-
-  const post = ({ onUploadRetry, ...args }) =>
-    postObjectWithRetry({
-      ...args,
-      onRetry: (info) => {
-        onUploadRetry?.(info);
-        retryStatus(args.key, info);
-      },
-    });
-
-  // Definitive check; the input-size test in setSelection() is early warning
-  const checkSize = (key, file) => {
-    if (!link.maxBytes || file.size <= link.maxBytes) return;
-    const err = new Error(
-      `${key.split("/").pop()} is ${humanBytes(file.size)} after filtering, above the ` +
-        `${humanBytes(link.maxBytes)} per-file limit for magic links.`
-    );
-    err.updeaconCause = "size";
-    throw err;
-  };
-
-  return {
-    async preflight(keyBase) {
-      runStatus = `Filtering and uploading to ${keyBase}`;
-      const { expired, text } = describeExpiry(link.expiresAt);
-      if (expired) {
-        const err = new Error(`This magic link expired ${text} ago.`);
-        err.updeaconCause = "link";
-        throw err;
-      }
-      await checkReachable(link.endpoint, link.bucket, {
-        retryOffline: true,
-        expiresAt: link.expiresAt,
-        onRetry: (info) => retryStatus(`${keyBase}/_CLIENT.json`, info),
-      });
-      // Fail now, not after an hour of filtering; also records upload provenance
-      setStatus("Checking magic link …");
-      await post({
-        link,
-        key: `${keyBase}/_CLIENT.json`,
-        body: new Blob([JSON.stringify(buildClientRecord(), null, 2)], { type: "application/json" }),
-        contentType: "application/json",
-      });
-    },
-    putSmall: (key, blob, contentType) => post({ link, key, body: blob, contentType }),
-    async uploadGroup(item, outputs, hooks) {
-      const specs =
-        item.kind === "paired"
-          ? [
-              { key: item.key, stream: outputs.streamR1, mate: "r1" },
-              { key: item.key2, stream: outputs.streamR2, mate: "r2" },
-            ]
-          : [{ key: item.key, stream: outputs.stream, mate: "" }];
-      const names = specs.map((s) => spoolName(spoolSeq++, s.mate));
-
-      try {
-        // Mates must drain together; the worker interleaves R1/R2 and stalls otherwise
-        const files = await Promise.all(specs.map((s, i) => spoolToFile(s.stream, names[i])));
-        specs.forEach((s, i) => checkSize(s.key, files[i]));
-
-        hooks.onUploadStart(files.reduce((n, f) => n + f.size, 0));
-        let done = 0;
-        for (let i = 0; i < specs.length; i++) {
-          await post({
-            link,
-            key: specs[i].key,
-            body: files[i],
-            onProgress: (loaded) => hooks.onUploadProgress(done + loaded),
-            onUploadRetry: () => hooks.onUploadProgress(done),
-          });
-          done += files[i].size;
-        }
-        return specs.map((s) => s.key);
-      } finally {
-        for (const name of names) await releaseSpool(name);
-      }
-    },
-  };
-}
-
 async function uploadAll() {
   const timestamp = timestampPrefix();
   const dirPrefix = uploadDirName(timestamp);
@@ -1253,7 +1059,18 @@ async function uploadAll() {
   });
   const rows = fileRows;
 
-  const uploader = LINK ? makeLinkUploader(LINK) : makeCredentialUploader();
+  const uploader = LINK
+    ? makeLinkUploader({ link: LINK, buildClientRecord, humanBytes, onStatus: setStatus })
+    : makeCredentialUploader({
+        accessKeyId: accessKeyEl.value.trim(),
+        secretAccessKey: secretKeyEl.value.trim(),
+        bucket: bucketEl.value.trim(),
+        endpoint: serverEl.value.trim(),
+        region: REGION,
+        partSize: PART_SIZE,
+        queueSize: QUEUE_SIZE,
+        onStatus: setStatus,
+      });
 
   let dehostedBefore = 0; // input bytes of fully-dehosted files
   let totalBasesIn = 0; // input bases dehosted (from per-file stats)
@@ -1426,6 +1243,9 @@ function formatError(err) {
     );
   }
   if (err?.updeaconCause === "size") {
+    return msg;
+  }
+  if (err?.updeaconCause === "storage") {
     return msg;
   }
   if (err?.updeaconCause === "link") {

@@ -8,6 +8,14 @@ const STALE_SPOOL_MS = 6 * 60 * 60 * 1000; // don't reap a sibling tab's live sp
 const RETRY_BASE_MS = 1000;
 const RETRY_MAX_MS = 60 * 1000;
 
+// Idle timeouts, never total-duration ones: a multi-GB POST over a bad link runs for
+// hours, and a retry re-sends from byte 0, so a false positive costs the whole object.
+// Abort only on prolonged silence.
+export const STALL_MS = 15 * 60 * 1000; // no upload progress at all
+export const RESPONSE_MS = 30 * 60 * 1000; // body sent, awaiting the store's commit
+export const SMALL_MS = 5 * 60 * 1000; // small bodies, request + response
+export const MEMORY_SPOOL_MAX_BYTES = 64 * 1024 * 1024;
+
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
 
 function bytesFromBase64(s) {
@@ -165,9 +173,19 @@ function postForm({ link, key, body, contentType = "application/octet-stream" })
   return form;
 }
 
-async function postObjectFetch({ link, key, body, contentType = "application/octet-stream" }) {
+async function postObjectFetch({
+  link,
+  key,
+  body,
+  contentType = "application/octet-stream",
+  setTimerFn = setTimeout,
+  clearTimerFn = clearTimeout,
+}) {
   let resp;
+  let errorBody = "";
   let offlineErr = null;
+  let timeoutErr = null;
+  let timer = null;
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   const removeOffline = ctrl
     ? withOfflineAbort((err) => {
@@ -175,6 +193,13 @@ async function postObjectFetch({ link, key, body, contentType = "application/oct
         ctrl.abort();
       })
     : () => {};
+  if (ctrl) {
+    // Small bodies only, so one bound covers sending and the response
+    timer = setTimerFn(() => {
+      timeoutErr = uploadTransportError("Upload timed out.");
+      ctrl.abort();
+    }, SMALL_MS);
+  }
   try {
     resp = await fetch(`${link.endpoint}/${link.bucket}`, {
       method: "POST",
@@ -183,45 +208,101 @@ async function postObjectFetch({ link, key, body, contentType = "application/oct
       cache: "no-store",
       ...(ctrl && { signal: ctrl.signal }),
     });
+    // fetch() resolves when response headers arrive. Keep the abort timer alive
+    // while an error body is consumed, or a half-delivered XML error can hang.
+    if (!resp.ok) errorBody = await resp.text();
   } catch (_) {
-    if (offlineErr) throw offlineErr;
-    throw uploadTransportError();
+    // Whichever cause triggered the abort wins; offline is the more specific
+    throw offlineErr || timeoutErr || uploadTransportError();
   } finally {
+    if (timer !== null) clearTimerFn(timer);
     removeOffline();
   }
   if (resp.ok) return;
-  throw s3ErrorFromText(resp.status, resp.statusText, await resp.text().catch(() => ""));
+  throw s3ErrorFromText(resp.status, resp.statusText, errorBody);
 }
 
 // XHR is only for progress; it forces preflight.
-function postObjectXhr({ link, key, body, contentType = "application/octet-stream", onProgress }) {
+function postObjectXhr({
+  link,
+  key,
+  body,
+  contentType = "application/octet-stream",
+  onProgress,
+  setTimerFn = setTimeout,
+  clearTimerFn = clearTimeout,
+}) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let settled = false;
     let offlineErr = null;
+    let timeoutErr = null;
     let removeOffline = () => {};
+    let stallTimer = null;
+    let responseTimer = null;
+    let uploadComplete = false;
+    let lastLoaded = 0;
+
+    const clearTimers = () => {
+      if (stallTimer !== null) clearTimerFn(stallTimer);
+      if (responseTimer !== null) clearTimerFn(responseTimer);
+      stallTimer = null;
+      responseTimer = null;
+    };
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
+      clearTimers();
       removeOffline();
       fn(value);
     };
+    // abort() fires onabort synchronously, so stash the cause first, as offline does
+    const abortWith = (err) => {
+      timeoutErr = err;
+      xhr.abort();
+    };
+    // Never xhr.timeout: that bounds total duration, and a slow upload is still alive
+    const armStall = () => {
+      if (uploadComplete) return;
+      if (stallTimer !== null) clearTimerFn(stallTimer);
+      stallTimer = setTimerFn(() => abortWith(uploadTransportError("Upload stalled.")), STALL_MS);
+    };
+
     removeOffline = withOfflineAbort((err) => {
       offlineErr = err;
       xhr.abort();
     });
     xhr.open("POST", `${link.endpoint}/${link.bucket}`);
-    if (onProgress) {
+    // Attached unconditionally: the stall timer needs the events, not just the caller
+    xhr.upload.onprogress = (e) => {
+      // Duplicate progress events are not evidence that bytes are still moving.
+      if (e.loaded > lastLoaded) {
+        lastLoaded = e.loaded;
+        armStall();
+      }
       // fetch() can't report upload progress
-      xhr.upload.onprogress = (e) => onProgress(e.loaded, e.total);
-    }
+      if (onProgress) onProgress(e.loaded, e.total);
+    };
+    xhr.upload.onloadend = () => {
+      if (settled || uploadComplete) return; // abort fires loadend too
+      uploadComplete = true;
+      if (stallTimer !== null) clearTimerFn(stallTimer);
+      stallTimer = null;
+      // The store can spend a long time committing a large object, silently
+      responseTimer = setTimerFn(
+        () => abortWith(uploadTransportError("Upload timed out waiting for the object store.")),
+        RESPONSE_MS
+      );
+    };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) finish(resolve);
       else finish(reject, s3Error(xhr));
     };
     xhr.onerror = () => finish(reject, uploadTransportError());
     xhr.ontimeout = () => finish(reject, uploadTransportError("Upload timed out."));
-    xhr.onabort = () => finish(reject, offlineErr || uploadTransportError("Upload was interrupted."));
+    xhr.onabort = () =>
+      finish(reject, offlineErr || timeoutErr || uploadTransportError("Upload was interrupted."));
+    armStall();
     xhr.send(postForm({ link, key, body, contentType }));
   });
 }
@@ -332,6 +413,40 @@ export function spoolSupported() {
   );
 }
 
+function spoolStorageError(message, cause = null) {
+  const err = new Error(message, cause ? { cause } : undefined);
+  err.updeaconCause = "storage";
+  return err;
+}
+
+// Prepare storage before filtering starts. Input size is used only to prevent an
+// unbounded in-memory fallback when OPFS is unavailable; actual quota is enforced
+// by the OPFS write because compressed filtered output size is not known yet.
+export async function prepareSpoolStorage(
+  requiredBytes,
+  {
+    supported = spoolSupported(),
+    persistFn = () => navigator.storage?.persist?.(),
+  } = {}
+) {
+  if (!supported) {
+    if (requiredBytes > MEMORY_SPOOL_MAX_BYTES) {
+      throw spoolStorageError(
+        `This browser cannot spool a ${Math.ceil(requiredBytes / 1024 / 1024)}MB filtered file to ` +
+          `private storage. Use a current browser with OPFS support for large magic-link uploads.`
+      );
+    }
+    return { opfs: false };
+  }
+
+  try {
+    await persistFn?.();
+  } catch (_) {
+    // Persistence is a best-effort eviction safeguard, not a requirement.
+  }
+  return { opfs: true };
+}
+
 async function spoolDir() {
   const root = await navigator.storage.getDirectory();
   return root.getDirectoryHandle(SPOOL_DIR, { create: true });
@@ -342,13 +457,30 @@ export function spoolName(n, mate = "") {
 }
 
 // POST needs the whole body up front; spool to OPFS to bound memory
-export async function spoolToFile(stream, name) {
-  if (!spoolSupported()) return new Response(stream).blob(); // older Safari/Firefox
-  const dir = await spoolDir();
-  const handle = await dir.getFileHandle(name, { create: true });
-  const writable = await handle.createWritable();
-  await stream.pipeTo(writable); // closes the writable
-  return handle.getFile();
+export async function spoolToFile(stream, name, { expectedBytes = 0 } = {}) {
+  if (!spoolSupported()) {
+    if (expectedBytes > MEMORY_SPOOL_MAX_BYTES) {
+      throw spoolStorageError(
+        "This browser cannot use private file storage for a large magic-link upload."
+      );
+    }
+    return new Response(stream).blob(); // bounded fallback for older browsers
+  }
+  try {
+    const dir = await spoolDir();
+    const handle = await dir.getFileHandle(name, { create: true });
+    const writable = await handle.createWritable();
+    await stream.pipeTo(writable); // closes the writable
+    return handle.getFile();
+  } catch (err) {
+    if (/QuotaExceeded|NotAllowed|NoModificationAllowed/i.test(err?.name || "")) {
+      throw spoolStorageError(
+        "The browser could not reserve enough private storage for the filtered upload.",
+        err
+      );
+    }
+    throw err;
+  }
 }
 
 export async function releaseSpool(name) {
