@@ -431,6 +431,7 @@ div.post {
   padding-bottom: 0em;
   page-break-before: always;
   max-width: 720px;
+  min-width: 0; /* flex item: don't stretch to fit wide tables */
 }
   div.post.single, div.post:last-child { border-bottom:none; }
   
@@ -603,6 +604,8 @@ footer {
   @media only screen and (max-width: 600px) {
     div.content table {
       font-size: 12px;
+      display: block;
+      overflow-x: auto;
     }
     
     div.content table th,
