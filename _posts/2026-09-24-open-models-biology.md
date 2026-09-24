@@ -18,7 +18,7 @@ In contrast, open-weight models consistently answer my prompts about biology eve
 
 ## Results
 
-**Claude Opus 5.5 refused to answer on biosecurity grounds, its refusal costing half that of DeepSeek's complete answer.** All other models responded, taking between 3 and 27 minutes to complete their research.
+**Claude Opus 5.5 refused to answer on biosecurity grounds, its refusal costing half that of DeepSeek's complete answer.** All other models responded, taking between 3 and 27 minutes to complete their research. With maximum reasoning effort, both Kimi K3 and Deepseek V4 Pro generated better answers than Opus 5. While Kimi K3 took considerably longer than other models and cost almost half that of Opus 5, DeepSeek V4 Pro rapidly generated a top-scoring answer in an order of magnitude less time for just $0.05 – two percent of the cost of Opus 5 here.
 
 | Model | Effort | Human grading | Cost | Time | Notes |
 |---|---|---|---|---|---|
@@ -30,7 +30,7 @@ In contrast, open-weight models consistently answer my prompts about biology eve
 | glm-5.3 | high | 70% | $0.30 | 9m10s | Factual accuracy is high, structure needs improvement, only answer to report final concentration of digestion buffer as the relevant condition |
 | mimo-v2.6-pro | high | 70% | $0.07 | 14m7s | Factual accuracy is high, critical analysis should have identified inconsistencies around RNA virus recovery and free-DNA, excellent synthesis. No `max` effort level available |
 | deepseek-v4-pro-0813 | high | 60% | $0.04 | 4m1s | Factual accuracy is high, failed to identify the importance of high salt on chromatin disruption |
-| claude-opus-5.5 | high | **Refused on biosecurity grounds** | $0.02 |  | Soap more dangerous than previously thought? |
+| claude-opus-5.5 | high | **Refused on biosecurity grounds** | $0.02 |  | Soap is more dangerous than we previously thought?! |
 
 **Notes**
 
@@ -40,11 +40,9 @@ In contrast, open-weight models consistently answer my prompts about biology eve
 
 ## Conclusion
 
-Despite Anthropic's [growing](https://www.anthropic.com/research/agents-in-biology) [interest](https://www.anthropic.com/research/claude-uplifts-biomolecular-modeling) [in biological research](https://www.anthropic.com/news/claude-discovers-novel-enzyme-system), their public models make unreliable assistants for many researchers due to their overly sensitive guardrails. Should your research area be deemed risky by Anthropic's classifier, you will need to find a backup model to complete agentic tasks refused by Claude.
+Despite Anthropic's [growing](https://www.anthropic.com/research/agents-in-biology) [interest](https://www.anthropic.com/research/claude-uplifts-biomolecular-modeling) [in biological research](https://www.anthropic.com/news/claude-discovers-novel-enzyme-system), their current public models make unreliable assistants for many researchers due to overly sensitive guardrails. Should your research topic be deemed risky by Anthropic's classifier, you will need to find an alternative model to complete agentic tasks refused by Claude.
 
-In this single example, open models yielded Opus-level answers in less time for a few pennies each. These models are all capable of complex reasoning and synthesising information from different scientific fields into a cohesive answer. One of the reasons we chose this question is that there is little published on the mechanism and the mechanism itself is counterintuitive, with high salt resulting in lysis via the colloid-osmosis effect. Good answers also correlate sterol richness in different taxa with depletion biases observed in different studies. All models tested performed outstandingly well in terms of factual accuracy and proposing a valid mechanism, the only differentiator was ability to critically analyse conflicting information, likely due to the complicated landscape of methods and sequencing modalities or the scarcity of published studies.
-
-
+In this single example, open-weight models yielded Opus-quality answers in less time for a few pennies each. Top open-weight models are all capable of complex reasoning and synthesising information from different scientific fields into a cohesive answer. One of the reasons we chose this question is that there is little published on the mechanism and the mechanism itself is counterintuitive, with high salt resulting in lysis via the colloid-osmosis effect. Good answers also correlate sterol richness in different taxa with depletion biases observed in different studies. All models tested performed outstandingly well in terms of factual accuracy and proposing a valid mechanism, with the main differentiator being the ability to critically analyse conflicting information, likely due to the complicated landscape of methods and sequencing modalities or the scarcity of published studies. 
 
 *Bede Constantinides &amp; Joshua Quick*
 
