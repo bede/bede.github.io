@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>skope-wasm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Look shared with updeacon-s3 */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --accent: #6d4fd8; --accent-dark: #5d43b8; --accent-wash: #f3f1fc; --ok: #1a7f52; --ok-fill: #d9f0e2; --ok-edge: #a6dcc0; --error: #e74c3c; --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace; }
+  body { font-family: 'Geist', system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; padding: 2rem; max-width: 720px; margin: 0 auto; counter-reset: section; }
+  h1 { font-size: 1.5rem; font-weight: 400; margin-bottom: 0.5rem; }
+  .beta-tag { color: var(--accent); font-size: 0.5em; font-weight: 400; vertical-align: super; }
+  .subtitle { color: #666; font-size: 0.9rem; }
+  a { color: #333; text-decoration: underline; }
+  a:hover { color: #000; }
+  /* Counter numerals, so hidden sections leave no gap */
+  .section-head, .usage-head { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: #888; margin: 1.5rem 0 0.5rem; }
+  .section-head { counter-increment: section; }
+  .section-head::before { content: counter(section) " "; color: var(--accent); }
+  /* Collapsible section, its heading doubling as the toggle */
+  summary.section-head { cursor: pointer; list-style: none; width: fit-content; }
+  summary.section-head::-webkit-details-marker { display: none; }
+  summary.section-head::after { content: " ▸"; color: var(--accent); }
+  details[open] > summary.section-head::after { content: " ▾"; }
+  summary.section-head:hover { color: #555; }
+  .usage { color: #444; font-size: 0.9rem; }
+  .usage ol { list-style: none; counter-reset: step; }
+  .usage li { position: relative; padding-left: 1.4rem; margin-bottom: 0.3rem; line-height: 1.45; }
+  .usage li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 0.05em; color: var(--accent); font-family: var(--mono); font-size: 0.85rem; }
+
+  .drop-zone { border: 1px dashed #aaa; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #fff; }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: var(--accent-wash); }
+  .drop-zone.loaded { border-style: solid; border-color: var(--ok); background: var(--ok-fill); padding: 1rem; }
+  .drop-zone.compact { padding: 0.8rem; }
+  .drop-zone input { display: none; }
+  .drop-zone .label { font-size: 0.8rem; color: #888; }
+  .drop-zone .summary { font-family: var(--mono); font-size: 0.9rem; color: #333; overflow-wrap: anywhere; }
+  .drop-zone .summary:empty, .drop-zone .info:empty { display: none; }
+  .drop-zone.loaded .label { margin-top: 0.3rem; }
+  .drop-zone .info { font-size: 0.8rem; color: #555; margin-top: 0.3rem; white-space: pre-line; }
+
+  .fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; margin-bottom: 1rem; }
+  .field label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; }
+  .field input, .field select { width: 100%; height: 2.3rem; padding: 0 0.6rem; border: 1px solid #ccc; background: #fff; color: #333; font-family: var(--mono); font-size: 0.9rem; }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+  .field input:disabled { background: #f0f0f0; color: #aaa; }
+  .checks { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; font-size: 0.85rem; color: #555; margin-bottom: 1rem; }
+  .checks label { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+  .checks input { accent-color: var(--accent); }
+
+  .actions { display: flex; gap: 0.6rem; align-items: center; margin-top: 1.5rem; }
+  button { font: inherit; background: var(--accent); color: #fff; border: 1px solid transparent; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: all 0.15s; }
+  button:hover:not(:disabled) { background: var(--accent-dark); }
+  button:disabled { background: #ececec; color: #aaa; cursor: not-allowed; }
+  button.secondary { background: #fff; color: #6c757d; border-color: #ced4da; }
+  button.secondary:hover:not(:disabled) { background: #f3f4f5; border-color: #adb5bd; }
+  /* A brief pulsing glow when a button becomes clickable */
+  @keyframes button-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(109, 79, 216, 0); }
+    50% { box-shadow: 0 0 11px 2px rgba(109, 79, 216, 0.6); }
+  }
+  button.pulse-glow { animation: button-glow 1.3s ease-in-out 3; }
+
+  .progress-wrap { margin-top: 1rem; }
+  progress { width: 100%; height: 0.55rem; appearance: none; -webkit-appearance: none; border: none; background: #eee; }
+  progress[value]::-webkit-progress-bar { background: #eee; }
+  progress[value]::-webkit-progress-value { background: #6c757d; }
+  progress[value]::-moz-progress-bar { background: #6c757d; }
+  .progress-label { font-size: 0.85rem; color: #555; margin-top: 0.3rem; }
+  #file-list { list-style: none; margin-top: 1rem; font-family: var(--mono); font-size: 0.8rem; max-height: 14rem; overflow-y: auto; border: 1px solid #ddd; background: #fff; }
+  #file-list li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0.6rem; border-bottom: 1px solid #f0f0f0; }
+  #file-list li:last-child { border-bottom: none; }
+  #file-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #file-list .st { flex-shrink: 0; color: #888; text-align: right; }
+  #file-list li.done .st { color: var(--ok); }
+  #file-list li.active .st { color: var(--accent); }
+  #file-list li.failed .st { color: var(--error); }
+  #status { margin-top: 1rem; padding: 0.8rem; background: #fff; font-size: 0.9rem; min-height: 2.5rem; border: 1px solid #ddd; white-space: pre-line; }
+  #status.error { border-color: var(--error); color: var(--error); }
+  #status.success { border-color: var(--ok-edge); color: var(--ok); }
+
+  .downloads { display: flex; gap: 0.6rem; margin-bottom: 0.8rem; }
+  .downloads button { padding: 0.4rem 1rem; font-size: 0.85rem; }
+  .table-wrap { overflow: auto; max-height: 32rem; border: 1px solid #ddd; background: #fff; }
+  table { border-collapse: collapse; font-family: var(--mono); font-size: 0.8rem; width: 100%; }
+  th, td { padding: 0.3rem 0.6rem; border-bottom: 1px solid #f0f0f0; text-align: right; white-space: nowrap; }
+  th { position: sticky; top: 0; background: #fff; color: #888; font-weight: 500; border-bottom: 1px solid #ddd; }
+  th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
+  tr.total td { font-weight: 500; background: #fafafa; }
+  td.bar { background: linear-gradient(to right, var(--accent-wash) var(--fill), transparent var(--fill)); }
+  .note { font-size: 0.8rem; color: #888; margin-top: 0.4rem; }
+
+  @media (max-width: 600px) {
+    body { padding: 1rem; }
+    .fields { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<h1>skope-wasm <span class="beta-tag"></span></h1>
+<p class="subtitle">Containment estimation using <a href="https://github.com/bede/skope">Skope</a>.</p>
+<div class="usage-head">Usage</div>
+<div class="usage">
+  <ol>
+    <li>Drag &amp; drop target sequences in fasta/fastq format, or a skope query index (.sk)</li>
+    <li>Drag &amp; drop sample fasta/fastq files, or a directory containing them. Illumina R1/R2 files are paired automatically.</li>
+    <li>Review options and press run to start</li>
+  </ol>
+</div>
+
+<div class="section-head">Targets</div>
+<div class="drop-zone" id="targets-zone">
+  <input type="file" id="targets-input" multiple>
+  <div class="summary" id="targets-summary"></div>
+  <div class="label">Click to select fasta/fastq[.gz] files or a query index (.sk), or drop them here</div>
+  <div class="info" id="targets-info"></div>
+</div>
+
+<div class="section-head">Samples</div>
+<div class="drop-zone" id="samples-zone">
+  <input type="file" id="samples-input" multiple>
+  <div class="summary" id="samples-summary"></div>
+  <div class="label">Click to select fasta/fastq[.gz] files, or drop files or a directory here</div>
+</div>
+
+<details id="options">
+<summary class="section-head">Options</summary>
+<div class="fields">
+  <div class="field"><label for="kmer">K-mer length</label><input type="number" id="kmer" value="31" min="3" max="61" step="2"></div>
+  <div class="field"><label for="smer">S-mer length</label><input type="number" id="smer" value="9" min="1" max="31" step="2"></div>
+  <div class="field"><label for="fraction">Fraction</label><input type="number" id="fraction" value="1" min="0" max="1" step="0.01"></div>
+  <div class="field"><label for="complexity">Complexity</label><input type="number" id="complexity" value="0" min="0" max="1" step="0.05"></div>
+  <div class="field"><label for="thresholds">Abundance thresholds</label><input type="text" id="thresholds" value="10" spellcheck="false"></div>
+  <div class="field"><label for="limit">Base limit</label><input type="text" id="limit" placeholder="none" spellcheck="false"></div>
+  <div class="field"><label for="sort">Sort</label><select id="sort"><option>containment</option><option>target</option><option>input</option></select></div>
+</div>
+<div class="checks">
+  <label><input type="checkbox" id="individual" checked> One target per record</label>
+  <label><input type="checkbox" id="total" checked> Show TOTAL rows</label>
+  <label><input type="checkbox" id="all-kmers"> All k-mers</label>
+  <label><input type="checkbox" id="discriminatory"> Discriminatory</label>
+  <label><input type="checkbox" id="confidence"> Confidence</label>
+  <label><input type="checkbox" id="interleaved"> Interleaved pairs</label>
+</div>
+<div class="drop-zone compact" id="background-zone">
+  <input type="file" id="background-input" multiple>
+  <div class="summary" id="background-summary"></div>
+  <div class="label">Optional background sequences: drop fasta/fastq[.gz] files whose k-mers will be ignored</div>
+  <div class="info" id="background-info"></div>
+</div>
+</details>
+
+<div class="actions">
+  <button id="run-btn" disabled>Run</button>
+  <button id="reset-btn" class="secondary" type="button">Reset</button>
+</div>
+
+<div class="progress-wrap" id="progress-wrap" hidden>
+  <progress id="progress" value="0" max="100"></progress>
+  <div class="progress-label" id="progress-label"></div>
+</div>
+<ul id="file-list" hidden></ul>
+
+<div id="status">Loading wasm…</div>
+
+<div id="results" hidden>
+  <div class="section-head">Results</div>
+  <div class="downloads">
+    <button id="download-tsv" class="secondary" type="button">Download TSV</button>
+  </div>
+  <div class="table-wrap" id="table-wrap"></div>
+  <p class="note" id="table-note" hidden></p>
+</div>
+
+<script type="module" src="./app.js?v=4c7e701"></script>
+</body>
+</html>
