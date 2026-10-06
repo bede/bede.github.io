@@ -1,6 +1,6 @@
 // Runs a query off the main thread. FileReaderSync lets wasm pull file slices as it parses
-import init, { Query, matesName, sampleName } from "./pkg/skope_wasm.js?v=9d14b0a";
-import { MSG, PHASE } from "./protocol.js?v=9d14b0a";
+import init, { Query, matesName, sampleName } from "./pkg/skope_wasm.js?v=946903f";
+import { MSG, PHASE } from "./protocol.js?v=946903f";
 
 const PROGRESS_MS = 100;
 const reader = new FileReaderSync();
@@ -65,5 +65,5 @@ self.onmessage = ({ data }) => {
 };
 
 // Name the wasm too, as the glue would resolve it without a cache token
-const wasm = new URL("./pkg/skope_wasm_bg.wasm?v=9d14b0a", import.meta.url);
+const wasm = new URL("./pkg/skope_wasm_bg.wasm?v=946903f", import.meta.url);
 init({ module_or_path: wasm }).then(() => post(MSG.READY), (err) => post(MSG.ERROR, { message: `Failed to load wasm: ${err.message}` }));
