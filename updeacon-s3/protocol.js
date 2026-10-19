@@ -24,7 +24,7 @@ export const FILTER_DEFAULTS = Object.freeze({
   relThreshold: 0.02,
   prefixLength: 0,
   rename: false,
-  outputFasta: false,
+  discardQuality: false,
 });
 
 // sapiometer thresholds (-a 1 -r 0, deplete): a read is human on a single k-mer hit
@@ -35,6 +35,6 @@ export const DETECT_DEFAULTS = Object.freeze({
 });
 
 // deacon crate version the bundled WASM was built from; bump when regenerating pkg/
-export const DEACON_VERSION = "deacon 0.15.0";
+export const DEACON_VERSION = "deacon 0.19.0";
 
 export const UPDEACON_VERSION = "0.3.0";

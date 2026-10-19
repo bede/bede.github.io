@@ -1,5 +1,5 @@
 // Presigned-link upload: decode a signed POST policy from the URL fragment and POST
-// objects under its prefix. Minted by scripts/mint-upload-link.py.
+// objects under its prefix. Minted by scripts/mint-magic-link.py.
 // A POST policy signs a key pattern, not one key, so it covers many files. But POST
 // Object is single-shot: no multipart, 5 GB per object, body sent in one request.
 

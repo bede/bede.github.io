@@ -1,23 +1,22 @@
 // Updeacon client fa/fq dehosting & direct-to-s3 upload
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=121a98f-dirty-20260731104053";
-import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js?v=121a98f-dirty-20260731104053";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=efb879d";
+import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js?v=efb879d";
 import {
   parseUploadLink,
   describeExpiry,
   clientEnvironment,
   purgeStaleSpools,
-} from "./presign.js?v=121a98f-dirty-20260731104053";
-import { makeCredentialUploader, makeLinkUploader } from "./uploaders.js?v=121a98f-dirty-20260731104053";
+} from "./presign.js?v=efb879d";
+import { makeCredentialUploader, makeLinkUploader } from "./uploaders.js?v=efb879d";
 
 // --- Fixed configuration -----------------------------------------------------
 // Ceph RADOS Gateway, not AWS: dummy region, forcePathStyle required (no vhost buckets)
-const ENDPOINT = "https://s3.climb.ac.uk";
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "121a98f-dirty-20260731104053";
+const BUILD_COMMIT = "efb879d";
 
-const ASSET_VERSION = "121a98f-dirty-20260731104053";
+const ASSET_VERSION = "efb879d";
 
 const PART_SIZE = 8 * 1024 * 1024;
 const QUEUE_SIZE = 4;
@@ -72,7 +71,6 @@ const usageCredsEl = $("usage-creds");
 const usageLinkEl = $("usage-link");
 
 bucketEl.value = bucketEl.value || BUCKET;
-serverEl.value = serverEl.value || ENDPOINT;
 
 // --- State -------------------------------------------------------------------
 let selectedFiles = []; // work groups: single file or paired R1/R2
@@ -212,7 +210,7 @@ function initMode() {
   }
   if (!LINK) {
     console.log(
-      `updeacon ${UPDEACON_VERSION}: bucket "${BUCKET}" at ${ENDPOINT} (commit ${BUILD_COMMIT})`
+      `updeacon ${UPDEACON_VERSION}: bucket "${BUCKET}" (commit ${BUILD_COMMIT})`
     );
     return;
   }

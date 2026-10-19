@@ -31,12 +31,15 @@ export class FilterSession {
      * @param {boolean} decompress_input
      * @param {boolean} compress_output
      * @param {boolean} rename
-     * @param {boolean} output_fasta
+     * @param {boolean} discard_quality
      */
-    constructor(index, deplete, abs_threshold, rel_threshold, decompress_input, compress_output, rename, output_fasta) {
+    constructor(index, deplete, abs_threshold, rel_threshold, decompress_input, compress_output, rename, discard_quality) {
         _assertClass(index, WasmIndex);
-        const ret = wasm.filtersession_new(index.__wbg_ptr, deplete, abs_threshold, rel_threshold, decompress_input, compress_output, rename, output_fasta);
-        this.__wbg_ptr = ret;
+        const ret = wasm.filtersession_new(index.__wbg_ptr, deplete, abs_threshold, rel_threshold, decompress_input, compress_output, rename, discard_quality);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
         FilterSessionFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -123,12 +126,15 @@ export class PairedFilterSession {
      * @param {boolean} compress_r1
      * @param {boolean} compress_r2
      * @param {boolean} rename
-     * @param {boolean} output_fasta
+     * @param {boolean} discard_quality
      */
-    constructor(index, deplete, abs_threshold, rel_threshold, decompress_r1, decompress_r2, compress_r1, compress_r2, rename, output_fasta) {
+    constructor(index, deplete, abs_threshold, rel_threshold, decompress_r1, decompress_r2, compress_r1, compress_r2, rename, discard_quality) {
         _assertClass(index, WasmIndex);
-        const ret = wasm.pairedfiltersession_new(index.__wbg_ptr, deplete, abs_threshold, rel_threshold, decompress_r1, decompress_r2, compress_r1, compress_r2, rename, output_fasta);
-        this.__wbg_ptr = ret;
+        const ret = wasm.pairedfiltersession_new(index.__wbg_ptr, deplete, abs_threshold, rel_threshold, decompress_r1, decompress_r2, compress_r1, compress_r2, rename, discard_quality);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        this.__wbg_ptr = ret[0];
         PairedFilterSessionFinalization.register(this, this.__wbg_ptr, this);
         return this;
     }
@@ -217,10 +223,10 @@ if (Symbol.dispose) WasmIndex.prototype[Symbol.dispose] = WasmIndex.prototype.fr
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
-        __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
+        __wbg___wbindgen_throw_5d9e815e6fdf150f: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
-        __wbg_error_a6fa202b58aa1cd3: function(arg0, arg1) {
+        __wbg_error_757e9472f8410341: function(arg0, arg1) {
             let deferred0_0;
             let deferred0_1;
             try {
@@ -235,15 +241,15 @@ function __wbg_get_imports() {
             const ret = new Error();
             return ret;
         },
-        __wbg_new_da52cf8fe3429cb2: function() {
+        __wbg_new_bebc3f4757acf305: function() {
             const ret = new Object();
             return ret;
         },
-        __wbg_new_from_slice_77cdfb7977362f3c: function(arg0, arg1) {
+        __wbg_new_from_slice_4ee02165f9de919e: function(arg0, arg1) {
             const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
             return ret;
         },
-        __wbg_set_8535240470bf2500: function() { return handleError(function (arg0, arg1, arg2) {
+        __wbg_set_a377297433dfea63: function() { return handleError(function (arg0, arg1, arg2) {
             const ret = Reflect.set(arg0, arg1, arg2);
             return ret;
         }, arguments); },
@@ -254,12 +260,12 @@ function __wbg_get_imports() {
             getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
         },
-        __wbindgen_cast_0000000000000001: function(arg0) {
+        __wbindgen_generic_0000000000000001: function(arg0) {
             // Cast intrinsic for `F64 -> Externref`.
             const ret = arg0;
             return ret;
         },
-        __wbindgen_cast_0000000000000002: function(arg0, arg1) {
+        __wbindgen_generic_0000000000000002: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return ret;
@@ -432,11 +438,15 @@ function __wbg_finalize_init(instance, module) {
 
 async function __wbg_load(module, imports) {
     if (typeof Response === 'function' && module instanceof Response) {
+        if (!module.ok) {
+            throw new Error(`failed to fetch Wasm: ${module.status} ${module.statusText} fetching '${module.url}'`);
+        }
+
         if (typeof WebAssembly.instantiateStreaming === 'function') {
             try {
                 return await WebAssembly.instantiateStreaming(module, imports);
             } catch (e) {
-                const validResponse = module.ok && expectedResponseType(module.type);
+                const validResponse = expectedResponseType(module.type);
 
                 if (validResponse && module.headers.get('Content-Type') !== 'application/wasm') {
                     console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
