@@ -1,22 +1,22 @@
 // Updeacon client fa/fq dehosting & direct-to-s3 upload
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=efb879d";
-import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js?v=efb879d";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=efb879d-dirty-20261022091113";
+import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js?v=efb879d-dirty-20261022091113";
 import {
   parseUploadLink,
   describeExpiry,
   clientEnvironment,
   purgeStaleSpools,
-} from "./presign.js?v=efb879d";
-import { makeCredentialUploader, makeLinkUploader } from "./uploaders.js?v=efb879d";
+} from "./presign.js?v=efb879d-dirty-20261022091113";
+import { makeCredentialUploader, makeLinkUploader } from "./uploaders.js?v=efb879d-dirty-20261022091113";
 
 // --- Fixed configuration -----------------------------------------------------
 // Ceph RADOS Gateway, not AWS: dummy region, forcePathStyle required (no vhost buckets)
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "efb879d";
+const BUILD_COMMIT = "efb879d-dirty-20261022091113";
 
-const ASSET_VERSION = "efb879d";
+const ASSET_VERSION = "efb879d-dirty-20261022091113";
 
 const PART_SIZE = 8 * 1024 * 1024;
 const QUEUE_SIZE = 4;
