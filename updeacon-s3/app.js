@@ -1,22 +1,22 @@
 // Updeacon client fa/fq dehosting & direct-to-s3 upload
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=ee33243";
-import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js?v=ee33243";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=b83ee12";
+import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js?v=b83ee12";
 import {
   parseUploadLink,
   describeExpiry,
   clientEnvironment,
   purgeStaleSpools,
-} from "./presign.js?v=ee33243";
-import { makeCredentialUploader, makeLinkUploader } from "./uploaders.js?v=ee33243";
+} from "./presign.js?v=b83ee12";
+import { makeCredentialUploader, makeLinkUploader } from "./uploaders.js?v=b83ee12";
 
 // --- Fixed configuration -----------------------------------------------------
 // Ceph RADOS Gateway, not AWS: dummy region, forcePathStyle required (no vhost buckets)
 const BUCKET = "cli-artic-drc-co-inrb-uploads";
 const REGION = "us-east-1";
 
-const BUILD_COMMIT = "ee33243";
+const BUILD_COMMIT = "b83ee12";
 
-const ASSET_VERSION = "ee33243";
+const ASSET_VERSION = "b83ee12";
 
 const PART_SIZE = 8 * 1024 * 1024;
 const QUEUE_SIZE = 4;
@@ -293,7 +293,7 @@ function setSelection(files) {
     if (singles) parts.push(`${singles} unpaired`);
     dirSummary.textContent = `${seqs.length} sequence file${
       seqs.length === 1 ? "" : "s"
-    } selected (${parts.join(", ")}) · ${humanBytes(totalBytes)}`;
+    } selected (${parts.join(", ")}), ${humanBytes(totalBytes)} in total`;
   }
   oversizeFiles = findOversizeFiles(selectedFiles);
   if (oversizeFiles.length) {
@@ -951,7 +951,7 @@ async function filterOnly() {
         const pct = totalBytes ? ((dehostedBefore + curProcessed) / totalBytes) * 100 : 0;
         dehostProgress.value = pct;
         dehostLabel.textContent =
-          `Filtering ${i + 1} of ${groups.length} · ` +
+          `Filtering ${i + 1} of ${groups.length}: ` +
           `${humanBytes(dehostedBefore + curProcessed)} / ${humanBytes(totalBytes)} ` +
           `(${pct.toFixed(1)}%)`;
         renderRow();
@@ -980,7 +980,7 @@ async function filterOnly() {
       const readsIn = Number(fileStats?.readsIn || 0);
       const readsOut = Number(fileStats?.readsOut || 0);
       rows[i].st.textContent = readsIn
-        ? `done · ${readsOut.toLocaleString()}/${readsIn.toLocaleString()} reads kept`
+        ? `done. ${readsOut.toLocaleString()}/${readsIn.toLocaleString()} reads kept`
         : "done";
       completed++;
     }
@@ -1102,14 +1102,14 @@ async function uploadAll() {
         const dpct = item.size ? Math.min(100, (curProcessed / item.size) * 100) : 100;
         rows[i].st.textContent = LINK
           ? `filtering ${dpct.toFixed(0)}%`
-          : `filtered ${dpct.toFixed(0)}% · uploaded ${humanBytes(curUploaded)}`;
+          : `filtered ${dpct.toFixed(0)}%, uploaded ${humanBytes(curUploaded)}`;
       };
       const onProgress = (m) => {
         curProcessed = m.bytesProcessed || 0;
         const pct = totalBytes ? ((dehostedBefore + curProcessed) / totalBytes) * 100 : 0;
         dehostProgress.value = pct;
         dehostLabel.textContent =
-          `Filtering ${i + 1} of ${items.length} · ` +
+          `Filtering ${i + 1} of ${items.length}: ` +
           `${humanBytes(dehostedBefore + curProcessed)} / ${humanBytes(totalBytes)} ` +
           `(${pct.toFixed(1)}%)`;
         renderRow();
@@ -1128,7 +1128,7 @@ async function uploadAll() {
         curUploaded = loaded;
         if (uploading) {
           dehostLabel.textContent =
-            `Uploading ${i + 1} of ${items.length} · ` +
+            `Uploading ${i + 1} of ${items.length}: ` +
             `${humanBytes(curUploaded)} / ${humanBytes(uploadTotal)}`;
         }
         renderRow();
@@ -1153,7 +1153,7 @@ async function uploadAll() {
       const readsIn = Number(fileStats?.readsIn || 0);
       const readsOut = Number(fileStats?.readsOut || 0);
       rows[i].st.textContent = readsIn
-        ? `done · ${readsOut.toLocaleString()}/${readsIn.toLocaleString()} reads uploaded`
+        ? `done. ${readsOut.toLocaleString()}/${readsIn.toLocaleString()} reads uploaded`
         : "done";
       completed++;
     }

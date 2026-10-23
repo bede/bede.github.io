@@ -19,12 +19,12 @@
   /* Section headings. Counter, not hardcoded numerals, so a hidden section (#creds
      in link mode) is skipped rather than leaving a gap. */
   body { counter-reset: section; }
-  .section-head, .usage-head { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: #888; }
-  .section-head::before { content: counter(section) " "; color: var(--accent); }
   /* Headings own the section break above them, so the gap doesn't depend on what
      precedes; the preceding block's smaller margin-bottom collapses into it. */
-  .usage-head { margin: 1.5rem 0 0.5rem; }
-  .section-head { margin: 1.5rem 0 0.5rem; counter-increment: section; }
+  .section-head { font-family: var(--mono); font-size: 0.85rem; color: #555; margin: 1.5rem 0 0.5rem; counter-increment: section; }
+  .section-head::before { content: counter(section) " "; color: var(--accent); }
+  .section-head.unnumbered { counter-increment: none; }
+  .section-head.unnumbered::before { content: none; }
   .usage { color: #444; font-size: 0.9rem; }
   .usage ol { list-style: none; counter-reset: step; margin: 0; padding: 0; }
   .usage li { position: relative; padding-left: 1.4rem; margin-bottom: 0.3rem; line-height: 1.45; }
@@ -132,7 +132,7 @@
 <h1>updeacon-s3 <span class="beta-tag">alpha</span></h1>
 <p class="subtitle">Securely dehost and upload DNA sequences in fasta/fastq format directly to S3 object storage.
   Runs <a href="https://github.com/bede/deacon">Deacon</a> in the browser to deplete human sequences prior to upload. FASTQ files are uploaded to a timestamped path prefix. Nested directory structures are preserved.</p>
-<div class="usage-head">Usage</div>
+<div class="section-head unnumbered">Usage</div>
 <div class="usage">
   <ol id="usage-link" hidden>
     <li>Press 'Download index' or wait for the cached <a href="https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w25c9b16.pidx">panhuman-1 index</a> to load.</li>
@@ -220,6 +220,6 @@
 
 <p class="info" style="text-align:center"><a href="#" id="purge-index">Clear index cache</a></p>
 
-<script type="module" src="./app.js?v=ee33243"></script>
+<script type="module" src="./app.js?v=b83ee12"></script>
 </body>
 </html>
