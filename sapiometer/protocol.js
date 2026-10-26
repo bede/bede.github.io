@@ -35,6 +35,6 @@ export const DETECT_DEFAULTS = Object.freeze({
 });
 
 // deacon crate version the bundled WASM was built from; bump when regenerating pkg/
-export const DEACON_VERSION = "deacon 0.19.0";
+export const DEACON_VERSION = "deacon 0.19.1";
 
-export const UPDEACON_VERSION = "0.4.1";
+export const UPDEACON_VERSION = "0.5.0";
