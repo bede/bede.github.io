@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>seq2bucket magic link</title>
+<link rel="stylesheet" href="./fonts.css?v=87dbf05">
+<link rel="stylesheet" href="./style.css?v=87dbf05">
+</head>
+<body data-raw="1">
+<h1>seq2bucket</h1>
+<p class="subtitle">Mint a magic link enabling someone to upload to a specified bucket prefix for up to 7 days.</p>
+
+<div id="mint-form">
+  <div class="section-head">Credentials</div>
+  <div class="field-row">
+    <div class="field">
+      <label for="server">Server address</label>
+      <input type="text" id="server" name="server" autocomplete="on" spellcheck="false" placeholder="S3 endpoint URL">
+    </div>
+    <div class="field">
+      <label for="bucket">Bucket</label>
+      <input type="text" id="bucket" name="bucket" autocomplete="on" spellcheck="false" placeholder="S3 bucket">
+    </div>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label for="access-key">Access key ID</label>
+      <input type="text" id="access-key" name="access-key-id" autocomplete="on" spellcheck="false" placeholder="S3 access key ID">
+    </div>
+    <div class="field">
+      <label for="secret-key">Secret access key</label>
+      <input type="password" id="secret-key" autocomplete="off" spellcheck="false" placeholder="S3 secret access key">
+    </div>
+  </div>
+
+  <div class="section-head">Link options</div>
+  <div class="field">
+    <label for="link-name">Name</label>
+    <input type="text" id="link-name" autocomplete="off" spellcheck="false" placeholder="e.g. inrb-batch3">
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label for="days">Lifetime (days)</label>
+      <input type="number" id="days" min="1" max="7" step="1" value="7">
+    </div>
+    <div class="field">
+      <label for="max-gb">Max file size (GB)</label>
+      <input type="number" id="max-gb" min="0.1" max="5" step="0.1" value="5">
+    </div>
+  </div>
+</div>
+
+<div class="actions">
+  <button id="mint-btn" type="button">Make link</button>
+</div>
+<p class="mint-error" id="mint-error" role="alert"></p>
+
+<div class="link-banner mint-result" id="result" hidden>
+  <div class="link-dest" id="result-dest"></div>
+  <div class="link-note" id="result-note"></div>
+  <textarea id="result-link" readonly rows="4" aria-label="Magic link"></textarea>
+  <button id="copy-btn" type="button">Copy</button>
+  <div class="link-note">Anyone with this link can upload into that prefix until expiry. They cannot list, read or delete anything.</div>
+</div>
+
+<p class="info footer-links"><a href="./">back to seq2bucket</a></p>
+
+<script type="module" src="./mint-page.js?v=87dbf05"></script>
+</body>
+</html>

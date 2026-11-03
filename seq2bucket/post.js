@@ -1,10 +1,8 @@
-// Presigned-link upload: decode a signed POST policy from the URL fragment and POST
-// objects under its prefix. Minted by scripts/mint-magic-link.py.
-// A POST policy signs a key pattern, not one key, so it covers many files. But POST
-// Object is single-shot: no multipart, 5 GB per object, body sent in one request.
+// Magic-link transport: POST Object with retry, and idle (never total-duration)
+// timeouts. A POST is single-shot: no multipart, 5 GB per object, body sent in one
+// request, and a retry re-sends from byte 0.
+import { describeExpiry } from "./link.js?v=87dbf05";
 
-const SPOOL_DIR = "updeacon-spool";
-const STALE_SPOOL_MS = 6 * 60 * 60 * 1000; // don't reap a sibling tab's live spools
 const RETRY_BASE_MS = 1000;
 const RETRY_MAX_MS = 60 * 1000;
 
@@ -14,113 +12,6 @@ const RETRY_MAX_MS = 60 * 1000;
 export const STALL_MS = 15 * 60 * 1000; // no upload progress at all
 export const RESPONSE_MS = 30 * 60 * 1000; // body sent, awaiting the store's commit
 export const SMALL_MS = 5 * 60 * 1000; // small bodies, request + response
-export const MEMORY_SPOOL_MAX_BYTES = 64 * 1024 * 1024;
-
-const SESSION_ID = Math.random().toString(36).slice(2, 10);
-
-function bytesFromBase64(s) {
-  // Payload is base64url, the policy inside it standard base64
-  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
-  const bin = atob(padded);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-function jsonFromBase64(s) {
-  return JSON.parse(new TextDecoder().decode(bytesFromBase64(s)));
-}
-
-// Read from the signed policy, so it can't disagree with a copy beside it
-function readPolicy(encoded) {
-  const policy = jsonFromBase64(encoded);
-  const conditions = Array.isArray(policy.conditions) ? policy.conditions : [];
-  let bucket = null;
-  let prefix = null;
-  let maxBytes = null;
-
-  for (const cond of conditions) {
-    if (Array.isArray(cond)) {
-      // ["starts-with", "$key", v] vs ["content-length-range", min, max]
-      const [op] = cond;
-      if (op === "starts-with" && cond[1] === "$key") prefix = cond[2];
-      else if (op === "content-length-range") maxBytes = Number(cond[2]);
-    } else if (cond && typeof cond === "object" && typeof cond.bucket === "string") {
-      bucket = cond.bucket;
-    }
-  }
-
-  if (!bucket) throw new Error("Magic link names no bucket.");
-  // Object store enforces the prefix; this only refuses an unscoped link
-  if (prefix == null) throw new Error("Magic link does not restrict uploads to a prefix.");
-  const expiresAt = Date.parse(policy.expiration);
-  if (Number.isNaN(expiresAt)) throw new Error("Magic link has no valid expiry.");
-
-  return { bucket, prefix, maxBytes, expiresAt };
-}
-
-// Null when the hash carries no link, throws when it carries a broken one
-export function parseUploadLink(hash) {
-  const raw = new URLSearchParams((hash || "").replace(/^#/, "")).get("u");
-  if (!raw) return null;
-
-  let payload;
-  try {
-    payload = jsonFromBase64(raw);
-  } catch (_) {
-    throw new Error("Magic link is corrupt — it may have been truncated in transit.");
-  }
-  if (payload.v !== 1) {
-    throw new Error(`Magic link version ${payload.v} is not supported by this page.`);
-  }
-  if (!payload.endpoint || !payload.fields?.policy || !payload.fields?.["x-amz-signature"]) {
-    throw new Error("Magic link is missing required fields.");
-  }
-
-  const { bucket, prefix, maxBytes, expiresAt } = readPolicy(payload.fields.policy);
-  return {
-    endpoint: payload.endpoint.replace(/\/$/, ""),
-    bucket,
-    prefix,
-    maxBytes,
-    expiresAt,
-    fields: payload.fields,
-  };
-}
-
-export function describeExpiry(expiresAt, now = Date.now()) {
-  const ms = expiresAt - now;
-  const abs = Math.abs(ms);
-  const units = [
-    ["day", 86400000],
-    ["hour", 3600000],
-    ["minute", 60000],
-  ];
-  let text = "less than a minute";
-  for (const [unit, size] of units) {
-    if (abs < size) continue;
-    // Unit by floor, count by round, so a fresh 7-day link isn't "6 days"
-    const n = Math.round(abs / size);
-    text = `${n} ${unit}${n === 1 ? "" : "s"}`;
-    break;
-  }
-  return { expired: ms <= 0, text };
-}
-
-// Provenance for an upload; never include location.href, the fragment holds the signature
-export function clientEnvironment() {
-  const nav = typeof navigator === "undefined" ? {} : navigator;
-  const env = {
-    user_agent: nav.userAgent || null,
-    platform: nav.userAgentData?.platform || nav.platform || null,
-    languages: [...(nav.languages || [])],
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
-    hardware_concurrency: nav.hardwareConcurrency ?? null,
-  };
-  if (nav.deviceMemory) env.device_memory_gb = nav.deviceMemory; // Chromium only
-  return env;
-}
 
 function s3Error(xhr) {
   return s3ErrorFromText(xhr.status, xhr.statusText, xhr.responseText || "");
@@ -145,14 +36,14 @@ function s3ErrorFromText(status, statusText, text) {
   err.name = code || "UploadError";
   err.status = status;
   if (status === 403 || /AccessDenied|Expired|SignatureDoesNotMatch|Policy/i.test(code)) {
-    err.updeaconCause = "link";
+    err.kind = "link";
   }
   return err;
 }
 
 function uploadTransportError(message = "Can't reach the object store from this page.", attrs = {}) {
   const err = new Error(message);
-  err.updeaconCause = "network";
+  err.kind = "network";
   Object.assign(err, attrs);
   return err;
 }
@@ -318,8 +209,8 @@ export function retryDelayMs(attempt, { baseMs = RETRY_BASE_MS, maxMs = RETRY_MA
 
 export function isRetryableUploadError(err) {
   if (!err) return false;
-  if (err.updeaconCause === "network") return true;
-  if (err.updeaconCause === "link" || err.updeaconCause === "size" || err.updeaconCause === "cors") {
+  if (err.kind === "network") return true;
+  if (err.kind === "link" || err.kind === "size" || err.kind === "cors") {
     return false;
   }
   return err.status === 408 || err.status === 429 || (err.status >= 500 && err.status < 600);
@@ -337,7 +228,7 @@ function linkExpiredError(link, now = Date.now()) {
   const { expired, text } = describeExpiry(link.expiresAt, now);
   if (!expired) return null;
   const err = new Error(`This magic link expired ${text} ago.`);
-  err.updeaconCause = "link";
+  err.kind = "link";
   return err;
 }
 
@@ -401,108 +292,5 @@ export async function postObjectWithRetry({
       onRetry?.({ attempt, waitMs, error: err });
       await sleepFn(waitMs);
     }
-  }
-}
-
-export function spoolSupported() {
-  return (
-    typeof navigator !== "undefined" &&
-    typeof navigator.storage?.getDirectory === "function" &&
-    typeof FileSystemFileHandle !== "undefined" &&
-    typeof FileSystemFileHandle.prototype.createWritable === "function"
-  );
-}
-
-function spoolStorageError(message, cause = null) {
-  const err = new Error(message, cause ? { cause } : undefined);
-  err.updeaconCause = "storage";
-  return err;
-}
-
-// Prepare storage before filtering starts. Input size is used only to prevent an
-// unbounded in-memory fallback when OPFS is unavailable; actual quota is enforced
-// by the OPFS write because compressed filtered output size is not known yet.
-export async function prepareSpoolStorage(
-  requiredBytes,
-  {
-    supported = spoolSupported(),
-    persistFn = () => navigator.storage?.persist?.(),
-  } = {}
-) {
-  if (!supported) {
-    if (requiredBytes > MEMORY_SPOOL_MAX_BYTES) {
-      throw spoolStorageError(
-        `This browser cannot spool a ${Math.ceil(requiredBytes / 1024 / 1024)}MB filtered file to ` +
-          `private storage. Use a current browser with OPFS support for large magic-link uploads.`
-      );
-    }
-    return { opfs: false };
-  }
-
-  try {
-    await persistFn?.();
-  } catch (_) {
-    // Persistence is a best-effort eviction safeguard, not a requirement.
-  }
-  return { opfs: true };
-}
-
-async function spoolDir() {
-  const root = await navigator.storage.getDirectory();
-  return root.getDirectoryHandle(SPOOL_DIR, { create: true });
-}
-
-export function spoolName(n, mate = "") {
-  return `${SESSION_ID}-${n}${mate ? `-${mate}` : ""}.bin`;
-}
-
-// POST needs the whole body up front; spool to OPFS to bound memory
-export async function spoolToFile(stream, name, { expectedBytes = 0 } = {}) {
-  if (!spoolSupported()) {
-    if (expectedBytes > MEMORY_SPOOL_MAX_BYTES) {
-      throw spoolStorageError(
-        "This browser cannot use private file storage for a large magic-link upload."
-      );
-    }
-    return new Response(stream).blob(); // bounded fallback for older browsers
-  }
-  try {
-    const dir = await spoolDir();
-    const handle = await dir.getFileHandle(name, { create: true });
-    const writable = await handle.createWritable();
-    await stream.pipeTo(writable); // closes the writable
-    return handle.getFile();
-  } catch (err) {
-    if (/QuotaExceeded|NotAllowed|NoModificationAllowed/i.test(err?.name || "")) {
-      throw spoolStorageError(
-        "The browser could not reserve enough private storage for the filtered upload.",
-        err
-      );
-    }
-    throw err;
-  }
-}
-
-export async function releaseSpool(name) {
-  if (!spoolSupported()) return;
-  try {
-    (await spoolDir()).removeEntry(name);
-  } catch (_) {
-    // Already gone
-  }
-}
-
-// Reap spools from a crashed session, age-gated so sibling tabs survive
-export async function purgeStaleSpools(now = Date.now()) {
-  if (!spoolSupported()) return;
-  try {
-    const dir = await spoolDir();
-    for await (const [name, handle] of dir.entries()) {
-      if (name.startsWith(`${SESSION_ID}-`)) continue;
-      const file = await handle.getFile();
-      if (now - file.lastModified > STALE_SPOOL_MS) await dir.removeEntry(name);
-    }
-  } catch (_) {
-    // Best effort
   }
 }

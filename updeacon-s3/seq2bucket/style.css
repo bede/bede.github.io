@@ -1,0 +1,137 @@
+/* Shared styles for pages built on seq2bucket (updeacon-s3, seq2bucket). */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+/* Greens shared with sapiometer: text/border, fill, softer edge */
+/* --accent-dark is --accent darkened for :hover; --accent-wash is it at ~8% on white */
+:root { --accent: #6d4fd8; --accent-dark: #5d43b8; --accent-wash: #f3f1fc; --ok: #1a7f52; --ok-fill: #d9f0e2; --ok-edge: #a6dcc0; --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace; }
+body { font-family: 'Geist', system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #333; padding: 2rem; max-width: 720px; margin: 0 auto; }
+h1 { font-family: 'Fraunces', Georgia, serif; font-size: 28px; font-weight: 400; margin-bottom: 0.5rem; }
+.mascot { display: inline-flex; align-items: center; gap: 0.3em; font-size: 24px; }
+.mascot span { display: inline-block; }
+.mascot .dna { position: relative; z-index: 1; }
+.mascot .bucket { position: relative; z-index: 2; }
+.mascot .arrow { transition: opacity 0.3s; }
+.mascot.busy .arrow { opacity: 0; }
+.mascot.busy .dna { animation: dna-into-bucket 1.5s linear infinite; }
+@keyframes dna-into-bucket {
+  0%   { translate: -0.2em 0; opacity: 0; }
+  20%  { opacity: 1; }
+  50%  { opacity: 1; scale: 1; }
+  64%, 100% { translate: calc(var(--dna-travel, 2.3em) * 0.8) 0; scale: 0.6; opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mascot.busy .dna { animation: none; }
+}
+.beta-tag { color: var(--accent); font-size: 0.5em; font-weight: 400; vertical-align: super; }
+.subtitle { color: #666; font-size: 0.9rem; }
+/* Section headings. Counter, not hardcoded numerals, so a hidden section (#creds
+   in link mode) is skipped rather than leaving a gap. */
+body { counter-reset: section; }
+/* Headings own the section break above them, so the gap doesn't depend on what
+   precedes; the preceding block's smaller margin-bottom collapses into it. */
+.section-head { font-family: var(--mono); font-size: 0.85rem; color: #555; margin: 1.5rem 0 0.5rem; counter-increment: section; }
+.section-head::before { content: counter(section) " "; color: var(--accent); }
+.section-head.unnumbered { counter-increment: none; }
+/* Magic-link destination: shown as 0, ahead of the numbered steps, and only with the banner */
+.section-head.zero { counter-increment: none; }
+.section-head.zero::before { content: "0 "; }
+.section-head.zero:has(+ .link-banner[hidden]) { display: none; }
+.section-head + .link-banner { margin-top: 0; }
+.section-head.unnumbered::before { content: none; }
+.usage { color: #444; font-size: 0.9rem; }
+.usage ol { list-style: none; counter-reset: step; margin: 0; padding: 0; }
+.usage li { position: relative; padding-left: 1.4rem; margin-bottom: 0.3rem; line-height: 1.45; }
+.usage li:last-child { margin-bottom: 0; }
+/* Mono numerals in place of default list markers. */
+.usage li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 0.05em; color: var(--accent); font-family: var(--mono); font-size: 0.85rem; }
+.field { margin-bottom: 1rem; }
+/* Grid items' margins don't collapse out of the container, so the row owns the
+   gap below it; otherwise .field's margin stacks on the next heading's. */
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-bottom: 1rem; }
+.field-row .field { margin-bottom: 0; }
+.field label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; }
+.field input { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #ccc; font-family: var(--mono); font-size: 0.9rem; }
+.field input:focus { outline: none; border-color: var(--accent); }
+.name-input { display: flex; align-items: center; border: 1px solid #ccc; background: #fff; font-family: var(--mono); font-size: 0.9rem; }
+.name-input:focus-within { border-color: var(--accent); }
+.name-input .name-prefix { color: #999; white-space: nowrap; user-select: none; padding: 0.5rem 0 0.5rem 0.6rem; }
+.name-input input { flex: 1; min-width: 0; width: auto; border: none; padding: 0.5rem 0.6rem 0.5rem 0; font: inherit; background: transparent; }
+.name-input input:focus { outline: none; }
+.drop-zone { border: 1px dashed #aaa; padding: 2rem; text-align: center; cursor: pointer; transition: all 0.2s; background: #fff; margin-bottom: 1rem; }
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: var(--accent-wash); }
+/* Once loaded, mirror .index-status.loaded above it */
+.drop-zone.loaded { border-style: solid; border-color: var(--ok); background: var(--ok-fill); padding: 1rem; }
+.drop-zone input { display: none; }
+/* .label matches .index-status .idx-info, .summary matches .index-status .filename */
+.drop-zone .label { font-size: 0.8rem; color: #888; }
+.drop-zone .summary { font-family: var(--mono); font-size: 0.9rem; color: #333; word-break: break-all; }
+.drop-zone .summary:empty { display: none; }
+.drop-zone.loaded .label { margin-top: 0.3rem; }
+.drop-zone .filename { font-weight: 600; color: #333; margin-top: 0.5rem; }
+.drop-zone .filename:empty { display: none; }
+.drop-zone .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
+.drop-zone .idx-info:empty { display: none; }
+/* Magic-link mode: stands in for the credential fields. */
+.link-banner { border: 1px solid var(--ok); background: var(--ok-fill); padding: 0.8rem 1rem; margin: 1.5rem 0 1rem; text-align: center; }
+.link-banner .link-dest { font-family: var(--mono); font-size: 0.9rem; color: #333; word-break: break-all; }
+.link-banner .link-note { font-size: 0.8rem; color: #666; margin-top: 0.3rem; }
+.link-banner.expired { border-color: #e74c3c; background: #fff5f5; }
+.link-banner.expired .link-note { color: #e74c3c; }
+.actions { display: flex; gap: 0.6rem; align-items: center; }
+/* Primary (filled purple) */
+button { background: var(--accent); color: #fff; border: 1px solid transparent; padding: 0.6rem 1.5rem; cursor: pointer; font-size: 0.95rem; transition: all 0.15s; }
+button:hover:not(:disabled) { background: var(--accent-dark); }
+/* Action buttons grey out while inactive, fill purple once their required fields are satisfied. */
+button:disabled { background: #ececec; color: #aaa; border-color: transparent; cursor: not-allowed; }
+/* Secondary (outlined): Reset = grey. Filter only uses the filled purple primary style. */
+#reset-btn, button.secondary { background: #fff; color: #6c757d; border-color: #ced4da; }
+#reset-btn:hover:not(:disabled), button.secondary:hover:not(:disabled) { background: #f3f4f5; border-color: #adb5bd; }
+#reset-btn:disabled { background: #fff; color: #ccc; border-color: #e8e8e8; }
+/* Confirmation before an upload starts, e.g. seq2bucket's privacy notice */
+dialog { border: 1px solid #ddd; background: #fff; color: #333; padding: 1.5rem; max-width: 34rem; width: calc(100% - 2rem); margin: auto; }
+dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+dialog h2 { font-size: 1.1rem; font-weight: 500; margin-bottom: 0.8rem; }
+dialog p { font-size: 0.9rem; line-height: 1.5; margin-bottom: 0.7rem; }
+dialog .actions { margin-top: 1.2rem; }
+dialog .mono { font-family: var(--mono); overflow-wrap: anywhere; }
+/* A brief pulsing glow when a button becomes clickable, to draw the eye. */
+@keyframes button-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(109, 79, 216, 0); }
+  50%      { box-shadow: 0 0 11px 2px rgba(109, 79, 216, 0.6); }
+}
+button.pulse-glow { animation: button-glow 1.3s ease-in-out 3; }
+.progress-wrap { margin-top: 1rem; }
+progress { width: 100%; height: 0.55rem; appearance: none; -webkit-appearance: none; accent-color: #6c757d; border: none; background: #eee; }
+progress[value]::-webkit-progress-bar { background: #eee; }
+progress[value]::-webkit-progress-value { background: #6c757d; }
+progress[value]::-moz-progress-bar { background: #6c757d; }
+.progress-label { font-size: 0.85rem; color: #555; margin-top: 0.3rem; }
+#file-list { list-style: none; margin-top: 1rem; font-family: var(--mono); font-size: 0.8rem; max-height: 14rem; overflow-y: auto; border: 1px solid #ddd; background: #fff; }
+#file-list li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.25rem 0.6rem; border-bottom: 1px solid #f0f0f0; }
+#file-list li:last-child { border-bottom: none; }
+#file-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#file-list .st { flex-shrink: 0; color: #888; }
+#file-list li.done .st { color: var(--ok); }
+#file-list li.active .st { color: var(--accent); }
+#file-list li.failed .st { color: #e74c3c; }
+#status { margin-top: 1rem; padding: 0.8rem; background: #fff; font-size: 0.9rem; min-height: 2.5rem; border: 1px solid #ddd; white-space: pre-line; }
+#status.error { border-color: #e74c3c; color: #e74c3c; }
+#status.success { border-color: var(--ok-edge); color: var(--ok); }
+@keyframes status-waiting {
+  0%, 100% { box-shadow: inset 3px 0 0 rgba(214, 129, 0, 0.35); }
+  50% { box-shadow: inset 3px 0 0 rgba(214, 129, 0, 1); }
+}
+#status.waiting { border-color: #d68100; color: #9a5a00; animation: status-waiting 1.2s ease-in-out infinite; }
+.info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
+a { color: #333; text-decoration: underline; }
+a:hover { color: #000; }
+/* Magic-link minting page */
+.mint-result { text-align: left; }
+.mint-result .link-note { margin-bottom: 0.6rem; }
+.mint-result textarea { width: 100%; font-family: var(--mono); font-size: 0.75rem; padding: 0.5rem; border: 1px solid #ccc; background: #fff; resize: vertical; word-break: break-all; margin-bottom: 0.5rem; }
+.mint-result .link-note:last-child { margin: 0.6rem 0 0; }
+.mint-error { color: #e74c3c; font-size: 0.85rem; margin-top: 0.8rem; }
+.mint-error:empty { display: none; }
+/* Quiet footer links (clear index cache, mint magic link, back to …) */
+.footer-links { text-align: center; }
+.footer-links, .footer-links a { font-size: 0.7rem; color: #bbb; }
+.footer-links a:hover { color: #888; }

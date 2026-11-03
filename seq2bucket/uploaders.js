@@ -1,22 +1,16 @@
-// Upload-mode adapters. UI code supplies status/rendering hooks; transport,
-// retry, spooling and preflight behaviour stay independently testable here.
-import {
-  describeExpiry,
-  postObjectWithRetry,
-  sleep,
-  waitForOnline,
-  spoolToFile,
-  spoolName,
-  releaseSpool,
-  prepareSpoolStorage,
-  SMALL_MS,
-} from "./presign.js?v=7b435a0";
+// Upload-mode adapters: credentials (multipart, streamed) and magic links (POST
+// Object). Both expose preflight / uploadGroup / putSmall, so the pipeline is
+// mode-agnostic. UI code supplies status hooks; transport, retry, spooling and
+// preflight behaviour stay independently testable here.
+import { describeExpiry } from "./link.js?v=87dbf05";
+import { postObjectWithRetry, sleep, waitForOnline, SMALL_MS } from "./post.js?v=87dbf05";
+import { spoolToFile, spoolName, releaseSpool, prepareSpoolStorage } from "./spool.js?v=87dbf05";
 
 const onlineNow = () => typeof navigator === "undefined" || navigator.onLine !== false;
 
 function expiredWhileWaiting() {
   const err = new Error("This magic link expired while waiting for the connection to return.");
-  err.updeaconCause = "link";
+  err.kind = "link";
   return err;
 }
 
@@ -70,7 +64,7 @@ export async function checkReachable(
     } catch (cause) {
       if (timedOut) {
         const err = new Error("Connection check timed out.", { cause });
-        err.updeaconCause = "network";
+        err.kind = "network";
         throw err;
       }
       throw cause;
@@ -87,8 +81,8 @@ export async function checkReachable(
       return;
     } catch (cause) {
       const err = new Error("Can't reach the object store from this page.", { cause });
-      err.updeaconCause = cause?.updeaconCause === "network" || !onlineFn() ? "network" : "cors";
-      if (!retryOffline || err.updeaconCause !== "network") throw err;
+      err.kind = cause?.kind === "network" || !onlineFn() ? "network" : "cors";
+      if (!retryOffline || err.kind !== "network") throw err;
       await waitBeforeRetry(err);
     }
   }
@@ -99,9 +93,9 @@ export function makeCredentialUploader({
   secretAccessKey,
   bucket,
   endpoint,
-  region,
-  partSize,
-  queueSize,
+  region = "us-east-1", // Ceph RGW ignores it, but the SDK needs one
+  partSize = 8 * 1024 * 1024,
+  queueSize = 4, // memory stays bounded at partSize × queueSize per stream
   onStatus,
   loadSdk = () => import("./vendor/aws-sdk.js"),
   checkReachableFn = checkReachable,
@@ -136,21 +130,24 @@ export function makeCredentialUploader({
       try {
         await put(`${keyBase}/_ACCESS_KEY_ID.txt`, new Blob([accessKeyId], { type: "text/plain" }), "text/plain");
       } catch (err) {
-        err.updeaconCause = "credentials";
+        err.kind = "credentials";
         throw err;
       }
     },
     putSmall: (key, blob, contentType) => put(key, blob, contentType),
+    // outputs carry transformed streams, or whole Blobs (raw) as body/bodyR1/bodyR2
     async uploadGroup(item, outputs, hooks) {
       if (item.kind !== "paired") {
-        await put(item.key, outputs.stream, null, hooks.onUploadProgress);
+        if (outputs.body) hooks.onUploadStart?.(outputs.body.size);
+        await put(item.key, outputs.body ?? outputs.stream, null, hooks.onUploadProgress);
         return [item.key];
       }
+      if (outputs.bodyR1) hooks.onUploadStart?.(outputs.bodyR1.size + outputs.bodyR2.size);
       let r1 = 0;
       let r2 = 0;
       await Promise.all([
-        put(item.key, outputs.streamR1, null, (n) => hooks.onUploadProgress((r1 = n) + r2)),
-        put(item.key2, outputs.streamR2, null, (n) => hooks.onUploadProgress(r1 + (r2 = n))),
+        put(item.key, outputs.bodyR1 ?? outputs.streamR1, null, (n) => hooks.onUploadProgress((r1 = n) + r2)),
+        put(item.key2, outputs.bodyR2 ?? outputs.streamR2, null, (n) => hooks.onUploadProgress(r1 + (r2 = n))),
       ]);
       return [item.key, item.key2];
     },
@@ -162,6 +159,7 @@ export function makeLinkUploader({
   buildClientRecord,
   humanBytes,
   onStatus,
+  runVerb = "Uploading",
   postWithRetryFn = postObjectWithRetry,
   prepareSpoolFn = prepareSpoolStorage,
   spoolToFileFn = spoolToFile,
@@ -195,23 +193,23 @@ export function makeLinkUploader({
       },
     });
 
-  const checkSize = (key, file) => {
+  const checkSize = (key, file, transformed) => {
     if (!link.maxBytes || file.size <= link.maxBytes) return;
     const err = new Error(
-      `${key.split("/").pop()} is ${humanBytes(file.size)} after filtering, above the ` +
+      `${key.split("/").pop()}${transformed ? " output" : ""} is ${humanBytes(file.size)}, above the ` +
         `${humanBytes(link.maxBytes)} per-file limit for magic links.`
     );
-    err.updeaconCause = "size";
+    err.kind = "size";
     throw err;
   };
 
   return {
     async preflight(keyBase) {
-      runStatus = `Filtering and uploading to ${keyBase}`;
+      runStatus = `${runVerb} to ${keyBase}`;
       const { expired, text } = describeExpiry(link.expiresAt);
       if (expired) {
         const err = new Error(`This magic link expired ${text} ago.`);
-        err.updeaconCause = "link";
+        err.kind = "link";
         throw err;
       }
       await checkReachableFn(link.endpoint, link.bucket, {
@@ -229,25 +227,33 @@ export function makeLinkUploader({
       });
     },
     putSmall: (key, blob, contentType) => post({ link, key, body: blob, contentType }),
+    // outputs carry transformed streams, or whole Blobs (raw) as body/bodyR1/bodyR2.
+    // A Blob is already a whole body, so it is POSTed as-is with no spool.
     async uploadGroup(item, outputs, hooks) {
       const specs =
         item.kind === "paired"
           ? [
-              { key: item.key, stream: outputs.streamR1, mate: "r1", sourceBytes: item.file1.size || 0 },
-              { key: item.key2, stream: outputs.streamR2, mate: "r2", sourceBytes: item.file2.size || 0 },
+              { key: item.key, stream: outputs.streamR1, body: outputs.bodyR1, mate: "r1", sourceBytes: item.file1.size || 0 },
+              { key: item.key2, stream: outputs.streamR2, body: outputs.bodyR2, mate: "r2", sourceBytes: item.file2.size || 0 },
             ]
-          : [{ key: item.key, stream: outputs.stream, mate: "", sourceBytes: item.file.size || 0 }];
-      const names = specs.map((s) => spoolNameFn(spoolSeq++, s.mate));
+          : [{ key: item.key, stream: outputs.stream, body: outputs.body, mate: "", sourceBytes: item.file.size || 0 }];
+      const direct = specs.every((s) => s.body);
+      const names = direct ? [] : specs.map((s) => spoolNameFn(spoolSeq++, s.mate));
 
       try {
-        await prepareSpoolFn(specs.reduce((n, s) => n + s.sourceBytes, 0));
-        // Mates must drain together; the worker interleaves R1/R2 and stalls otherwise.
-        const files = await Promise.all(
-          specs.map((s, i) =>
-            spoolToFileFn(s.stream, names[i], { expectedBytes: s.sourceBytes })
-          )
-        );
-        specs.forEach((s, i) => checkSize(s.key, files[i]));
+        let files;
+        if (direct) {
+          files = specs.map((s) => s.body);
+        } else {
+          await prepareSpoolFn(specs.reduce((n, s) => n + s.sourceBytes, 0));
+          // Mates must drain together; a paired producer interleaves R1/R2 and stalls otherwise.
+          files = await Promise.all(
+            specs.map((s, i) =>
+              spoolToFileFn(s.stream, names[i], { expectedBytes: s.sourceBytes })
+            )
+          );
+        }
+        specs.forEach((s, i) => checkSize(s.key, files[i], !direct));
 
         hooks.onUploadStart(files.reduce((n, f) => n + f.size, 0));
         let done = 0;

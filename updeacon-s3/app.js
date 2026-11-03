@@ -1,26 +1,31 @@
-// Updeacon client fa/fq dehosting & direct-to-s3 upload
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION, UPDEACON_VERSION } from "./protocol.js?v=7b435a0";
-import { SEQ_RE, describeGroups, groupRelativePaths, pairSequenceFiles } from "./pairing.js?v=7b435a0";
+// updeacon-s3: filter fa/fq with Deacon in the browser, then upload to S3 via seq2bucket
+import { DEACON_VERSION } from "./protocol.js?v=87dbf05";
+import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=87dbf05";
+import { describeGroups } from "./seq2bucket/pairing.js?v=87dbf05";
+import { parseMagicLink } from "./seq2bucket/link.js?v=87dbf05";
+import { purgeStaleSpools } from "./seq2bucket/spool.js?v=87dbf05";
+import { clientRecord, findOversizeFiles, runUpload } from "./seq2bucket/pipeline.js?v=87dbf05";
+import { makeLinkUploader } from "./seq2bucket/uploaders.js?v=87dbf05";
+import { VERSION, BUILD_COMMIT } from "./seq2bucket/version.js?v=87dbf05";
 import {
-  parseUploadLink,
-  describeExpiry,
-  clientEnvironment,
-  purgeStaleSpools,
-} from "./presign.js?v=7b435a0";
-import { makeCredentialUploader, makeLinkUploader } from "./uploaders.js?v=7b435a0";
+  bindCredentialForm,
+  bindFilePicker,
+  bindUploadName,
+  formatError,
+  humanBases,
+  humanBytes,
+  makeBusyIndicator,
+  makeRunView,
+  makeStatus,
+  oversizeMessage,
+  renderFileList,
+  renderLinkBanner,
+  renderLinkError,
+  selectSequences,
+  setButtonDisabled,
+} from "./seq2bucket/ui.js?v=87dbf05";
 
 // --- Fixed configuration -----------------------------------------------------
-// Ceph RADOS Gateway, not AWS: dummy region, forcePathStyle required (no vhost buckets)
-const BUCKET = "cli-artic-drc-co-inrb-uploads";
-const REGION = "us-east-1";
-
-const BUILD_COMMIT = "7b435a0";
-
-const ASSET_VERSION = "7b435a0";
-
-const PART_SIZE = 8 * 1024 * 1024;
-const QUEUE_SIZE = 4;
-
 const MAX_INDEX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 
 const INDEX_URL =
@@ -28,24 +33,18 @@ const INDEX_URL =
 const INDEX_FILENAME = "panhuman-1.k31w25c9b16.pidx";
 const INDEX_DISPLAY_NAME = "Index: panhuman-1"; // shown in panel; filename kept for summaries
 
-// --- Upload link --------------------------------------------------------------
+// --- Magic link --------------------------------------------------------------
 // Signed POST policy in the fragment, so it never reaches the web server
 let LINK = null;
 let linkError = null;
 try {
-  LINK = parseUploadLink(location.hash);
+  LINK = parseMagicLink(location.hash);
 } catch (err) {
   linkError = err.message;
 }
 
 // --- DOM ---------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
-const bucketEl = $("bucket");
-const serverEl = $("server");
-const accessKeyEl = $("access-key");
-const secretKeyEl = $("secret-key");
-const runNameEl = $("run-name");
-const namePrefixEl = $("name-prefix");
 const indexStatus = $("index-status");
 const indexInput = $("index-input");
 const indexName = $("index-name");
@@ -60,90 +59,48 @@ const uploadBtn = $("upload-btn");
 const filterBtn = $("filter-btn");
 const resetBtn = $("reset-btn");
 const progressWrap = $("progress-wrap");
-const dehostProgress = $("dehost-progress");
-const dehostLabel = $("dehost-label");
+const runProgress = $("run-progress");
+const runLabel = $("run-label");
 const fileListEl = $("file-list");
-const statusEl = $("status");
 const purgeIndexEl = $("purge-index");
 const credsEl = $("creds");
 const linkBannerEl = $("link-banner");
 const usageCredsEl = $("usage-creds");
 const usageLinkEl = $("usage-link");
 
-bucketEl.value = bucketEl.value || BUCKET;
+const setStatus = makeStatus($("status"));
+const uploadName = bindUploadName({ prefixEl: $("name-prefix"), inputEl: $("run-name") });
+// No heading animation on updeacon; this just puts the percentage in the tab title
+const busyIndicator = makeBusyIndicator({ mascot: null, progress: runProgress, name: "updeacon-s3" });
+const creds = bindCredentialForm({
+  server: $("server"),
+  bucket: $("bucket"),
+  accessKey: $("access-key"),
+  secretKey: $("secret-key"),
+  onInput() {
+    updateUploadEnabled();
+    // Don't overwrite an oversize/pairing error, or a live run's progress
+    if (!isBusy && !uploadCompleted && !oversizeFiles.length) setStatus(readyStatus());
+  },
+});
 
 // --- State -------------------------------------------------------------------
 let selectedFiles = []; // work groups: single file or paired R1/R2
 let fileRows = []; // { li, st } DOM rows, one per selected group (same order)
-let totalBytes = 0;
-let isUploading = false;
+let isBusy = false; // filtering or uploading; blocks other actions
 let uploadCompleted = false; // upload finished; lock buttons until next selection
-let frozenPrefix = null; // timestamp committed at upload time
 let indexLoaded = false;
 let indexFilename = ""; // name of the loaded .idx (recorded in summaries)
 let indexK = null; // k-mer length parsed from the index info string
 let indexW = null; // window size parsed from the index info string
-let workerReady = false; // worker has finished WASM init (MSG.READY)
-let pendingIndexBuffer = null; // index bytes waiting for the worker to be ready
 let indexFailed = false; // download failed; panel acts as a manual drop target
 let indexNeedsDownload = false; // not cached; panel click starts the download
-let linkExpired = false; // presigned link is past its expiry (server enforces too)
+let linkExpired = false; // magic link is past its expiry (server enforces too)
 let oversizeFiles = []; // inputs above the link's per-object cap
 
+const indexMeta = () => ({ filename: indexFilename, k: indexK, w: indexW });
+
 // --- Helpers -----------------------------------------------------------------
-function setStatus(msg, kind) {
-  statusEl.textContent = msg;
-  statusEl.className = kind || "";
-}
-
-function humanBytes(n) {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0;
-  while (n >= 1024 && i < units.length - 1) {
-    n /= 1024;
-    i++;
-  }
-  return `${n.toFixed(i === 0 ? 0 : 1)}${units[i]}`;
-}
-
-function humanBases(bp) {
-  const units = ["bp", "kbp", "Mbp", "Gbp", "Tbp"];
-  let i = 0;
-  while (bp >= 1000 && i < units.length - 1) {
-    bp /= 1000;
-    i++;
-  }
-  return `${bp.toFixed(i === 0 ? 0 : 1)}${units[i]}`;
-}
-
-function timestampPrefix() {
-  // Key-safe ISO 8601 (Zulu), no ms or colons
-  return new Date().toISOString().replace(/\.\d+Z$/, "Z").replace(/:/g, "-");
-}
-
-function sanitizeName(s) {
-  return (s || "").trim().replace(/[\s/\\]+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
-}
-
-function uploadDirName(timestamp) {
-  const name = sanitizeName(runNameEl.value);
-  return name ? `${timestamp}--${name}` : timestamp;
-}
-
-function setButtonDisabled(btn, disabled) {
-  btn.disabled = disabled;
-  btn.classList.toggle("pulse-glow", !disabled);
-}
-
-function credentialsFilled() {
-  return (
-    bucketEl.value.trim() &&
-    serverEl.value.trim() &&
-    accessKeyEl.value.trim() &&
-    secretKeyEl.value.trim()
-  );
-}
-
 // What the user still has to do, given index, selection and mode
 function readyStatus() {
   if (!indexLoaded) return "";
@@ -153,7 +110,7 @@ function readyStatus() {
       : "Index loaded. Select sequences and enter S3 credentials";
   }
   if (LINK && linkExpired) return "";
-  if (!LINK && !credentialsFilled()) return "Enter S3 credentials to upload, or press 'Filter only'";
+  if (!LINK && !creds.filled()) return "Enter S3 credentials to upload, or press 'Filter only'";
   return "Press either 'Filter & upload' or 'Filter only' to begin";
 }
 
@@ -165,361 +122,124 @@ function updateUploadEnabled() {
   }
   const haveFiles = selectedFiles.length > 0;
   // Filter only never touches S3, so a bad link doesn't disable it
-  setButtonDisabled(filterBtn, isUploading || !haveFiles);
-  const uploadBlocked = LINK
-    ? linkExpired || oversizeFiles.length > 0
-    : !credentialsFilled();
-  setButtonDisabled(uploadBtn, isUploading || !haveFiles || !!linkError || uploadBlocked);
+  setButtonDisabled(filterBtn, isBusy || !haveFiles);
+  const uploadBlocked = LINK ? linkExpired || oversizeFiles.length > 0 : !creds.filled();
+  setButtonDisabled(uploadBtn, isBusy || !haveFiles || !!linkError || uploadBlocked);
 }
 
-// --- Mode: presigned link vs S3 credentials ----------------------------------
-function humanDate(ms) {
-  return new Date(ms).toISOString().replace("T", " ").replace(/:\d\d\.\d+Z$/, " UTC");
+function setBusy(busy) {
+  isBusy = busy;
+  resetBtn.disabled = busy;
+  updateUploadEnabled();
+  if (busy) busyIndicator.start();
+  else busyIndicator.finish();
 }
 
-function renderLinkBanner() {
-  const { expired, text } = describeExpiry(LINK.expiresAt);
-  linkExpired = expired;
-  linkBannerEl.classList.toggle("expired", expired);
-  linkBannerEl.innerHTML = "";
-
-  const dest = document.createElement("div");
-  dest.className = "link-dest";
-  dest.textContent = `${LINK.bucket}/${LINK.prefix.replace(/\/$/, "")}`;
-
-  const note = document.createElement("div");
-  note.className = "link-note";
-  note.textContent = expired
-    ? `This magic link expired ${text} ago (${humanDate(LINK.expiresAt)}). Ask whoever sent it for a new one.`
-    : `Reusable magic link, expires in ${text} (${humanDate(LINK.expiresAt)})`;
-
-  linkBannerEl.append(dest, note);
+// --- Mode: magic link vs S3 credentials --------------------------------------
+function renderBanner() {
+  linkExpired = renderLinkBanner(linkBannerEl, LINK);
 }
 
 function initMode() {
   if (linkError) {
     // Banner, not #status: initIndex() overwrites #status moments later
     credsEl.hidden = true;
-    linkBannerEl.hidden = false;
-    linkBannerEl.classList.add("expired");
-    const note = document.createElement("div");
-    note.className = "link-note";
-    note.textContent = `${linkError} Ask whoever sent it for a new one.`;
-    linkBannerEl.replaceChildren(note);
+    renderLinkError(linkBannerEl, `${linkError} Ask whoever sent it for a new one.`);
     return;
   }
   if (!LINK) {
-    console.log(
-      `updeacon ${UPDEACON_VERSION}: bucket "${BUCKET}" (commit ${BUILD_COMMIT})`
-    );
+    console.log(`updeacon ${VERSION}: credential mode, bucket "${creds.bucket()}" (commit ${BUILD_COMMIT})`);
     return;
   }
 
   // Never log the link itself: the signature is a bearer credential
   console.log(
-    `updeacon ${UPDEACON_VERSION}: presigned upload to "${LINK.bucket}/${LINK.prefix}" ` +
+    `updeacon ${VERSION}: magic-link upload to "${LINK.bucket}/${LINK.prefix}" ` +
       `at ${LINK.endpoint} (commit ${BUILD_COMMIT})`
   );
   credsEl.hidden = true;
+  $("mint-entry").hidden = true; // link recipients have no keys to sign with
   usageCredsEl.hidden = true;
   usageLinkEl.hidden = false;
   linkBannerEl.hidden = false;
-  renderLinkBanner();
-  setInterval(renderLinkBanner, 60000); // tick the countdown, and expire in place
+  renderBanner();
+  setInterval(renderBanner, 60000); // tick the countdown, and expire in place
   purgeStaleSpools();
 }
 
-// Filtered output is always gzip; uncompressed inputs get a .gz suffix so the name stays honest
-const GZ_RE = /\.gz$/i;
-const gzName = (name) => (GZ_RE.test(name) ? name : name + ".gz");
-
-// Build upload items; keys are <keyBase>/<relative path> so basenames never collide
-function buildUploadItems(groups, keyBase) {
-  return groups.map((group) => {
-    const paths = groupRelativePaths(group);
-    if (group.kind === "paired") {
-      return {
-        ...group,
-        key: gzName(`${keyBase}/${paths.input}`),
-        key2: gzName(`${keyBase}/${paths.input2}`),
-      };
-    }
-    return {
-      ...group,
-      key: gzName(`${keyBase}/${paths.input}`),
-    };
-  });
-}
-
-// Output is never larger than input, so an oversize input can't fit a POST
-function findOversizeFiles(groups) {
-  if (!LINK?.maxBytes) return [];
-  const files = groups.flatMap((g) => (g.kind === "paired" ? [g.file1, g.file2] : [g.file]));
-  return files.filter((f) => (f.size || 0) > LINK.maxBytes);
-}
-
+// --- Selection ---------------------------------------------------------------
 function setSelection(files) {
+  busyIndicator.stop(); // a new selection or Reset clears a finished run's title
   uploadCompleted = false; // fresh selection clears the post-upload lock
-  // Re-arm the run name; a link is reusable
-  frozenPrefix = null;
-  runNameEl.readOnly = false;
-  tickNamePrefix();
-  const seqs = files.filter((f) => SEQ_RE.test(f.name));
-  try {
-    selectedFiles = pairSequenceFiles(seqs);
-  } catch (err) {
-    selectedFiles = [];
-    totalBytes = 0;
-    dirZone.classList.remove("loaded");
-    dirSummary.textContent = "Pairing error";
-    setStatus(err?.message || String(err), "error");
-    renderFileList();
-    updateUploadEnabled();
-    return;
-  }
-  totalBytes = selectedFiles.reduce((sum, group) => sum + group.size, 0);
-
-  if (seqs.length === 0) {
-    dirZone.classList.remove("loaded");
-    dirSummary.textContent = files.length
-      ? "No fastq/fasta files found in selection"
-      : "";
-  } else {
-    dirZone.classList.add("loaded");
-    const pairs = selectedFiles.filter((group) => group.kind === "paired").length;
-    const singles = selectedFiles.length - pairs;
-    const parts = [];
-    if (pairs) parts.push(`${pairs} pair${pairs === 1 ? "" : "s"}`);
-    if (singles) parts.push(`${singles} unpaired`);
-    dirSummary.textContent = `${seqs.length} sequence file${
-      seqs.length === 1 ? "" : "s"
-    } selected (${parts.join(", ")}), ${humanBytes(totalBytes)} in total`;
-  }
-  oversizeFiles = findOversizeFiles(selectedFiles);
-  if (oversizeFiles.length) {
-    const names = oversizeFiles.map((f) => `${f.name} (${humanBytes(f.size)})`).join(", ");
+  uploadName.rearm(); // a link is reusable
+  const sel = selectSequences(files);
+  selectedFiles = sel.groups;
+  dirSummary.textContent = sel.summary;
+  dirZone.classList.toggle("loaded", sel.groups.length > 0);
+  oversizeFiles = LINK ? findOversizeFiles(selectedFiles, LINK.maxBytes) : [];
+  if (sel.error) setStatus(sel.error, "error");
+  else if (oversizeFiles.length) {
     setStatus(
-      `Too large for a magic link, which is capped at ${humanBytes(LINK.maxBytes)} ` +
-        `per file: ${names}. Remove these files, or upload them with S3 credentials.`,
+      oversizeMessage(oversizeFiles, LINK.maxBytes, "Remove these files, or upload them with S3 credentials."),
       "error"
     );
-  } else {
-    setStatus(readyStatus());
-  }
+  } else setStatus(readyStatus());
   progressWrap.style.display = "none";
-  renderFileList();
+  fileRows = renderFileList(fileListEl, selectedFiles);
   updateUploadEnabled();
 }
 
-function renderFileList() {
-  fileListEl.innerHTML = "";
-  fileRows = selectedFiles.map((group) => {
-    const li = document.createElement("li");
-    const name = document.createElement("span");
-    name.className = "name";
-    name.textContent = group.label;
-    const st = document.createElement("span");
-    st.className = "st";
-    li.append(name, st);
-    fileListEl.appendChild(li);
-    return { li, st };
-  });
-  fileListEl.style.display = fileRows.length ? "" : "none";
-}
+bindFilePicker({ zone: dirZone, input: dirInput, isBusy: () => isBusy, onFiles: setSelection });
 
-// --- WASM worker (dehosting) -------------------------------------------------
-const worker = new Worker(`./worker.js?v=${ASSET_VERSION}`, { type: "module" });
+resetBtn.addEventListener("click", () => {
+  if (isBusy) return;
+  dirInput.value = "";
+  setSelection([]);
+});
 
-// Route worker replies to the active per-file handlers (one file at a time)
-let onOutputBatch = null; // (msg) => void  — next OUTPUT_CHUNK_BATCH
-let onDehostProgress = null; // (msg) => void  — PROGRESS for the active file
-let onWorkerError = null; // (message) => void — abort the active pull
+// --- Deacon engine -----------------------------------------------------------
+const engine = createDeaconEngine({
+  onIndexLoaded(info, { k, w }) {
+    indexLoaded = true;
+    indexFailed = false;
+    indexNeedsDownload = false;
+    indexK = k;
+    indexW = w;
+    indexStatus.classList.remove("failed", "needs-download");
+    indexStatus.classList.add("loaded");
+    indexProgress.style.display = "none";
+    indexRetry.hidden = true;
+    indexDownload.hidden = true;
+    clearIndexLoading();
+    indexInfo.textContent = info;
+    setStatus(readyStatus());
+    updateUploadEnabled();
+  },
+  onError(message) {
+    clearIndexLoading();
+    indexInfo.textContent = "";
+    setStatus("Error: " + message, "error");
+  },
+});
 
-worker.onmessage = (e) => {
-  const m = e.data;
-  switch (m.type) {
-    case MSG.READY:
-      workerReady = true;
-      // Hand over the index if it finished loading first
-      if (pendingIndexBuffer) {
-        const buf = pendingIndexBuffer;
-        pendingIndexBuffer = null;
-        worker.postMessage({ type: MSG.LOAD_INDEX, data: buf }, [buf]);
-      }
-      break;
-    case MSG.INDEX_LOADED: {
-      indexLoaded = true;
-      indexFailed = false;
-      indexNeedsDownload = false;
-      indexStatus.classList.remove("failed", "needs-download");
-      indexStatus.classList.add("loaded");
-      indexProgress.style.display = "none";
-      indexRetry.hidden = true;
-      indexDownload.hidden = true;
-      clearIndexLoading();
-      indexInfo.textContent = m.info;
-      // Parse k and w from info ("k=31, w=61 (… minimizers)") for summaries
-      const kw = /k=(\d+),\s*w=(\d+)/.exec(m.info || "");
-      indexK = kw ? Number(kw[1]) : null;
-      indexW = kw ? Number(kw[2]) : null;
-      setStatus(readyStatus());
-      updateUploadEnabled();
-      break;
-    }
-    case MSG.PROGRESS:
-      if (onDehostProgress) onDehostProgress(m);
-      break;
-    case MSG.OUTPUT_CHUNK_BATCH:
-      if (onOutputBatch) onOutputBatch(m);
-      break;
-    case MSG.ERROR:
-      if (onWorkerError) onWorkerError(m.message);
-      else {
-        clearIndexLoading();
-        indexInfo.textContent = "";
-        setStatus("Error: " + m.message, "error");
-      }
-      break;
-    default:
-      break;
-  }
-};
-
-worker.postMessage({ type: MSG.INIT });
-
-// ReadableStream of one file's dehosted bytes; pull-driven so the S3 consumer paces the filter
-function dehostSingleStream(file, hooks) {
-  return new ReadableStream({
-    start() {
-      onDehostProgress = hooks.onProgress;
-      worker.postMessage({ type: MSG.FILTER, data: { file } });
-    },
-    pull(controller) {
-      return new Promise((resolve, reject) => {
-        onWorkerError = (message) => {
-          onWorkerError = null;
-          onOutputBatch = null;
-          reject(new Error(message));
-        };
-        onOutputBatch = (m) => {
-          onOutputBatch = null;
-          for (const buf of m.chunks) controller.enqueue(new Uint8Array(buf));
-          if (m.done) {
-            onWorkerError = null;
-            onDehostProgress = null;
-            if (hooks.onStats) hooks.onStats(m.stats, m.elapsed);
-            controller.close();
-          }
-          resolve();
-        };
-        worker.postMessage({ type: MSG.PULL });
-      });
-    },
-    cancel() {
-      // Drop handlers; worker frees its session on next FILTER
-      onOutputBatch = null;
-      onDehostProgress = null;
-      onWorkerError = null;
-    },
-  });
-}
-
-function dehostGroup(group, hooks) {
-  if (group.kind === "paired") {
-    return dehostPairedStreams(group, hooks);
-  }
-  return { stream: dehostSingleStream(group.file, hooks) };
-}
-
-function dehostPairedStreams(group, hooks) {
-  const state = {
-    queues: { r1: [], r2: [] },
-    done: false,
-    pulling: null,
-    started: false,
-  };
-
-  const clearHandlers = () => {
-    onWorkerError = null;
-    onOutputBatch = null;
-  };
-
-  const pump = () => {
-    if (state.done || state.pulling) return state.pulling || Promise.resolve();
-    state.pulling = new Promise((resolve, reject) => {
-      onWorkerError = (message) => {
-        clearHandlers();
-        const err = new Error(message);
-        reject(err);
-      };
-      onOutputBatch = (m) => {
-        clearHandlers();
-        for (const buf of m.chunksR1 || []) state.queues.r1.push(new Uint8Array(buf));
-        for (const buf of m.chunksR2 || []) state.queues.r2.push(new Uint8Array(buf));
-        if (m.done) {
-          state.done = true;
-          onDehostProgress = null;
-          if (hooks.onStats) hooks.onStats(m.stats, m.elapsed);
-        }
-        resolve();
-      };
-      worker.postMessage({ type: MSG.PULL });
-    }).finally(() => {
-      state.pulling = null;
-    });
-    return state.pulling;
-  };
-
-  const makeStream = (mate) =>
-    new ReadableStream({
-      start(controller) {
-        if (!state.started) {
-          state.started = true;
-          onDehostProgress = hooks.onProgress;
-          worker.postMessage({
-            type: MSG.FILTER,
-            data: { file1: group.file1, file2: group.file2 },
-          });
-        }
-      },
-      async pull(controller) {
-        while (!state.queues[mate].length && !state.done) {
-          await pump();
-        }
-        const chunk = state.queues[mate].shift();
-        if (chunk) {
-          controller.enqueue(chunk);
-        } else if (state.done) {
-          controller.close();
-        }
-      },
-      cancel() {
-        clearHandlers();
-        onDehostProgress = null;
-      },
-    });
-
-  return { streamR1: makeStream("r1"), streamR2: makeStream("r2") };
-}
-
-// --- Index selection ----------------------------------------------------------
+// --- Index selection ---------------------------------------------------------
 // Click to download (uncached) or select a local .idx (failed); drop works in either state
 indexStatus.addEventListener("click", () => {
-  if (isUploading) return;
+  if (isBusy) return;
   if (indexNeedsDownload) downloadAndLoadIndex();
   else if (indexFailed) indexInput.click();
 });
 indexStatus.addEventListener("dragover", (e) => {
   if (!(indexNeedsDownload || indexFailed)) return;
   e.preventDefault();
-  if (!isUploading) indexStatus.classList.add("dragover");
+  if (!isBusy) indexStatus.classList.add("dragover");
 });
 indexStatus.addEventListener("dragleave", () => indexStatus.classList.remove("dragover"));
 indexStatus.addEventListener("drop", (e) => {
   if (!(indexNeedsDownload || indexFailed)) return;
   e.preventDefault();
   indexStatus.classList.remove("dragover");
-  if (isUploading) return;
+  if (isBusy) return;
   if (e.dataTransfer.files.length > 0) loadIndexFile(e.dataTransfer.files[0]);
 });
 indexInput.addEventListener("change", () => {
@@ -546,12 +266,12 @@ async function loadIndexFile(file) {
   indexName.textContent = file.name;
   showIndexLoading("Loading");
   setStatus(`Loading index (${(file.size / 1024 / 1024).toFixed(0)}MB)…`);
-  const buf = await file.arrayBuffer();
-  sendIndexToWorker(buf);
+  engine.loadIndex(await file.arrayBuffer());
 }
 
 // --- Index auto-download + cache ---------------------------------------------
-// Cache in IndexedDB (handles the ~850 MB blob) for instant offline reloads
+// Cache in IndexedDB (handles the ~850 MB blob) for instant offline reloads. The
+// database name predates seq2bucket; renaming it would force a re-download.
 const IDB_NAME = "updeacon";
 const IDB_STORE = "index";
 
@@ -575,9 +295,7 @@ function idbRequest(makeReq) {
 async function getCachedIndex(url) {
   const db = await openIdxDB();
   try {
-    return await idbRequest(() =>
-      db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(url)
-    );
+    return await idbRequest(() => db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(url));
   } finally {
     db.close();
   }
@@ -592,9 +310,7 @@ async function putCachedIndex(url, blob) {
   }
   const db = await openIdxDB();
   try {
-    await idbRequest(() =>
-      db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).put(blob, url)
-    );
+    await idbRequest(() => db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).put(blob, url));
   } finally {
     db.close();
   }
@@ -603,9 +319,7 @@ async function putCachedIndex(url, blob) {
 async function clearCachedIndex(url) {
   const db = await openIdxDB();
   try {
-    await idbRequest(() =>
-      db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).delete(url)
-    );
+    await idbRequest(() => db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).delete(url));
   } finally {
     db.close();
   }
@@ -617,11 +331,7 @@ async function pruneStaleIndexes(keepUrl) {
   try {
     const store = db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE);
     const keys = await idbRequest(() => store.getAllKeys());
-    await Promise.all(
-      keys
-        .filter((key) => key !== keepUrl)
-        .map((key) => idbRequest(() => store.delete(key)))
-    );
+    await Promise.all(keys.filter((key) => key !== keepUrl).map((key) => idbRequest(() => store.delete(key))));
   } finally {
     db.close();
   }
@@ -634,14 +344,6 @@ function showIndexLoading(label) {
 
 function clearIndexLoading() {
   indexInfo.classList.remove("loading-dots");
-}
-
-function sendIndexToWorker(arrayBuffer) {
-  if (workerReady) {
-    worker.postMessage({ type: MSG.LOAD_INDEX, data: arrayBuffer }, [arrayBuffer]);
-  } else {
-    pendingIndexBuffer = arrayBuffer;
-  }
 }
 
 async function downloadIndex(url, onProgress) {
@@ -686,8 +388,7 @@ function showIndexNeedsDownload() {
   void indexDownload.offsetWidth;
   indexDownload.classList.add("pulse-glow");
   indexName.textContent = ""; // download button stands in for the title
-  indexInfo.textContent =
-    "No Deacon index cached. Click to download or drop an .idx/.pidx file.";
+  indexInfo.textContent = "No Deacon index cached. Click to download or drop an .idx/.pidx file.";
   indexStatus.classList.remove("loaded", "failed");
   indexStatus.classList.add("needs-download");
   setStatus("");
@@ -721,15 +422,13 @@ async function initIndex() {
   indexRetry.hidden = true;
   indexDownload.hidden = true;
   indexStatus.classList.remove("failed", "needs-download", "loaded", "dragover");
-  pruneStaleIndexes(INDEX_URL).catch((e) =>
-    console.warn("updeacon: failed to prune stale cached indexes", e)
-  );
+  pruneStaleIndexes(INDEX_URL).catch((e) => console.warn("updeacon: failed to prune stale cached indexes", e));
   try {
     const cached = await getCachedIndex(INDEX_URL);
     if (cached) {
       showIndexLoading("Loading cached index");
       setStatus("Loading cached index…");
-      sendIndexToWorker(await cached.arrayBuffer());
+      engine.loadIndex(await cached.arrayBuffer());
       return;
     }
     showIndexNeedsDownload();
@@ -752,13 +451,11 @@ async function downloadAndLoadIndex() {
     setStatus("Downloading index…");
     showIndexProgress(0, 0);
     const blob = await downloadIndex(INDEX_URL, showIndexProgress);
-    await putCachedIndex(INDEX_URL, blob).catch((e) =>
-      console.warn("updeacon: failed to cache index", e)
-    );
+    await putCachedIndex(INDEX_URL, blob).catch((e) => console.warn("updeacon: failed to cache index", e));
     indexProgress.style.display = "none";
     showIndexLoading("Loading index");
     setStatus("Loading index…");
-    sendIndexToWorker(await blob.arrayBuffer());
+    engine.loadIndex(await blob.arrayBuffer());
   } catch (err) {
     showIndexFailure(err);
   }
@@ -776,10 +473,10 @@ indexRetry.addEventListener("click", (e) => {
 
 purgeIndexEl.addEventListener("click", async (e) => {
   e.preventDefault();
-  if (isUploading) return;
+  if (isBusy) return;
   // Update the UI first — Safari's IndexedDB can stall on delete
   indexLoaded = false;
-  worker.postMessage({ type: MSG.RESET });
+  engine.reset();
   updateUploadEnabled();
   showIndexNeedsDownload();
   setStatus("Clearing index cache…");
@@ -792,104 +489,7 @@ purgeIndexEl.addEventListener("click", async (e) => {
   }
 });
 
-// --- Directory selection -----------------------------------------------------
-dirZone.addEventListener("click", () => {
-  if (!isUploading) dirInput.click();
-});
-
-dirInput.addEventListener("change", () => {
-  setSelection(Array.from(dirInput.files));
-});
-
-dirZone.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  if (!isUploading) dirZone.classList.add("dragover");
-});
-dirZone.addEventListener("dragleave", () => dirZone.classList.remove("dragover"));
-dirZone.addEventListener("drop", async (e) => {
-  e.preventDefault();
-  dirZone.classList.remove("dragover");
-  if (isUploading) return;
-  const items = Array.from(e.dataTransfer.items)
-    .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
-    .filter(Boolean);
-  if (items.length) {
-    const files = await collectEntries(items);
-    setSelection(files);
-  } else {
-    setSelection(Array.from(e.dataTransfer.files || []));
-  }
-});
-
-// Flatten dropped FileSystemEntry tree to File[], stamping webkitRelativePath like the picker
-async function collectEntries(entries, prefix = "") {
-  const out = [];
-  for (const entry of entries) {
-    if (entry.isFile) {
-      const file = await new Promise((res, rej) => entry.file(res, rej));
-      try {
-        Object.defineProperty(file, "webkitRelativePath", {
-          value: prefix + entry.name,
-          configurable: true,
-        });
-      } catch (_) {
-        // Read-only in some browsers; key falls back to basename
-      }
-      out.push(file);
-    } else if (entry.isDirectory) {
-      const reader = entry.createReader();
-      const children = await readAllEntries(reader);
-      out.push(...(await collectEntries(children, prefix + entry.name + "/")));
-    }
-  }
-  return out;
-}
-
-function readAllEntries(reader) {
-  // readEntries returns ~100 entries per call; loop until exhausted
-  return new Promise((resolve, reject) => {
-    const all = [];
-    const next = () =>
-      reader.readEntries((batch) => {
-        if (!batch.length) resolve(all);
-        else {
-          all.push(...batch);
-          next();
-        }
-      }, reject);
-    next();
-  });
-}
-
-// --- Upload ------------------------------------------------------------------
-[bucketEl, serverEl, accessKeyEl, secretKeyEl].forEach((el) =>
-  el.addEventListener("input", () => {
-    updateUploadEnabled();
-    // Don't overwrite an oversize/pairing error, or a live run's progress
-    if (!isUploading && !uploadCompleted && !oversizeFiles.length) setStatus(readyStatus());
-  })
-);
-
-// Tick the greyed "<timestamp>--" prefix; real value captured at upload start. Once committed,
-// freeze to that timestamp so the field matches what's uploaded.
-function tickNamePrefix() {
-  namePrefixEl.textContent = `${frozenPrefix ?? timestampPrefix()}--`;
-}
-tickNamePrefix();
-setInterval(tickNamePrefix, 1000);
-
-resetBtn.addEventListener("click", () => {
-  if (isUploading) return;
-  dirInput.value = "";
-  setSelection([]);
-  dirSummary.textContent = "";
-  dirZone.classList.remove("loaded");
-});
-
-uploadBtn.addEventListener("click", uploadAll);
-
-filterBtn.addEventListener("click", filterOnly);
-
+// --- Filter only -------------------------------------------------------------
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -901,67 +501,41 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Filter locally and download — no S3, no credentials
+const readsText = (verb) => (_item, { stats }) => {
+  const readsIn = Number(stats?.readsIn || 0);
+  const readsOut = Number(stats?.readsOut || 0);
+  return readsIn ? `done. ${readsOut.toLocaleString()}/${readsIn.toLocaleString()} reads ${verb}` : "done";
+};
+
+// Filter locally and download: no S3, no credentials
 async function filterOnly() {
   const groups = selectedFiles;
   if (!groups.length) return;
-
-  console.log("updeacon: deacon filter params", {
-    index: indexFilename,
-    k: indexK,
-    w: indexW,
-    deplete: FILTER_DEFAULTS.deplete,
-    abs_threshold: FILTER_DEFAULTS.absThreshold,
-    rel_threshold: FILTER_DEFAULTS.relThreshold,
-    prefix_length: FILTER_DEFAULTS.prefixLength,
-  });
-
-  isUploading = true; // reuse the busy flag: blocks other buttons + reset
-  updateUploadEnabled();
-  resetBtn.disabled = true;
+  logFilterParams(indexMeta());
+  setBusy(true);
   setStatus("Filtering…");
 
-  progressWrap.style.display = "block";
-  dehostProgress.value = 0;
-  dehostLabel.textContent = "";
-  fileRows.forEach(({ li, st }) => {
-    li.className = "";
-    st.textContent = "queued";
+  const view = makeRunView({
+    wrap: progressWrap,
+    bar: runProgress,
+    label: runLabel,
+    rows: fileRows,
+    groups,
+    filtering: true,
+    doneText: readsText("kept"),
   });
-  const rows = fileRows;
-
-  let dehostedBefore = 0; // input bytes of fully-dehosted files
   let totalBasesIn = 0;
   let completed = 0;
   try {
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
-      rows[i].li.className = "active";
-      rows[i].st.textContent = "filtering…";
-
-      let curProcessed = 0;
-      let fileStats = null;
-
-      const renderRow = () => {
-        const dpct = group.size ? Math.min(100, (curProcessed / group.size) * 100) : 100;
-        rows[i].st.textContent = `filtered ${dpct.toFixed(0)}%`;
-      };
-      const onProgress = (m) => {
-        curProcessed = m.bytesProcessed || 0;
-        const pct = totalBytes ? ((dehostedBefore + curProcessed) / totalBytes) * 100 : 0;
-        dehostProgress.value = pct;
-        dehostLabel.textContent =
-          `Filtering ${i + 1} of ${groups.length}: ` +
-          `${humanBytes(dehostedBefore + curProcessed)} / ${humanBytes(totalBytes)} ` +
-          `(${pct.toFixed(1)}%)`;
-        renderRow();
-      };
-      const onStats = (stats) => {
-        fileStats = stats;
-      };
-
+      view.onGroupStart(i);
+      const result = { stats: null };
       // Response.blob() drains the pull-stream, materialising output in memory
-      const outputs = dehostGroup(group, { onProgress, onStats });
+      const outputs = engine.filterGroup(group, {
+        onProgress: (m) => view.onTransformProgress(i, m),
+        onStats: (stats) => (result.stats = stats),
+      });
       if (group.kind === "paired") {
         const [blob1, blob2] = await Promise.all([
           new Response(outputs.streamR1).blob(),
@@ -970,311 +544,104 @@ async function filterOnly() {
         downloadBlob(blob1, gzName(group.file1.name));
         downloadBlob(blob2, gzName(group.file2.name));
       } else {
-        const blob = await new Response(outputs.stream).blob();
-        downloadBlob(blob, gzName(group.file.name));
+        downloadBlob(await new Response(outputs.stream).blob(), gzName(group.file.name));
       }
-
-      dehostedBefore += group.size;
-      totalBasesIn += Number(fileStats?.basesIn || 0);
-      rows[i].li.className = "done";
-      const readsIn = Number(fileStats?.readsIn || 0);
-      const readsOut = Number(fileStats?.readsOut || 0);
-      rows[i].st.textContent = readsIn
-        ? `done. ${readsOut.toLocaleString()}/${readsIn.toLocaleString()} reads kept`
-        : "done";
+      totalBasesIn += Number(result.stats?.basesIn || 0);
+      view.onGroupDone(i, group, result);
       completed++;
     }
-
-    dehostProgress.value = 100;
     const done = describeGroups(groups.slice(0, completed));
-    dehostLabel.textContent = `Processed ${humanBases(totalBasesIn)} of input across ${done}.`;
+    view.finish(`Processed ${humanBases(totalBasesIn)} of input across ${done}.`);
     setStatus(`Filtering complete: ${done} downloaded`, "success");
   } catch (err) {
-    const idx = completed; // the file that failed
-    if (rows[idx]) {
-      rows[idx].li.className = "failed";
-      rows[idx].st.textContent = "failed";
-    }
+    busyIndicator.stop();
+    view.fail(completed);
     console.error(err);
     setStatus("Filtering failed: " + (err?.message || err), "error");
   } finally {
-    isUploading = false;
-    resetBtn.disabled = false;
-    updateUploadEnabled();
+    setBusy(false);
   }
 }
 
-// --- Uploaders ----------------------------------------------------------------
-// Both expose preflight/uploadGroup/putSmall, so uploadAll() is mode-agnostic.
-// Credentials stream a group into a multipart upload; a POST needs it whole.
-
-// Written before filtering, so it records intent rather than outcome. Filter params
-// live in the per-file .deacon.json; don't repeat them here.
-function buildClientRecord() {
-  return {
-    started: new Date().toISOString(),
-    updeacon_commit: BUILD_COMMIT,
-    groups: selectedFiles.length,
-    input_bytes: totalBytes,
-    ...clientEnvironment(),
-  };
-}
-
+// --- Filter & upload ---------------------------------------------------------
 async function uploadAll() {
-  const timestamp = timestampPrefix();
-  const dirPrefix = uploadDirName(timestamp);
+  const groups = selectedFiles;
+  if (!groups.length) return;
+  const dirName = uploadName.commit();
   // Own timestamped dir inside the prefix, so a reused link never overwrites
-  const keyBase = LINK ? LINK.prefix + dirPrefix : dirPrefix;
-  const items = buildUploadItems(selectedFiles, keyBase);
-  if (!items.length) return;
+  const keyBase = LINK ? LINK.prefix + dirName : dirName;
 
-  // Commit to this name: freeze the ticking prefix and lock the field
-  frozenPrefix = timestamp;
-  runNameEl.readOnly = true;
-  tickNamePrefix();
-
-  console.log("updeacon: deacon filter params", {
-    index: indexFilename,
-    k: indexK,
-    w: indexW,
-    deplete: FILTER_DEFAULTS.deplete,
-    abs_threshold: FILTER_DEFAULTS.absThreshold,
-    rel_threshold: FILTER_DEFAULTS.relThreshold,
-    prefix_length: FILTER_DEFAULTS.prefixLength,
-  });
-
-  isUploading = true;
-  updateUploadEnabled();
-  resetBtn.disabled = true;
-  setStatus(`Uploading to ${dirPrefix}/ …`);
-
-  progressWrap.style.display = "block";
-  dehostProgress.value = 0;
-  dehostLabel.textContent = "";
-  fileRows.forEach(({ li, st }) => {
-    li.className = "";
-    st.textContent = "queued";
-  });
-  const rows = fileRows;
+  logFilterParams(indexMeta());
+  setBusy(true);
+  setStatus(`Uploading to ${dirName}/ …`);
 
   const uploader = LINK
-    ? makeLinkUploader({ link: LINK, buildClientRecord, humanBytes, onStatus: setStatus })
-    : makeCredentialUploader({
-        accessKeyId: accessKeyEl.value.trim(),
-        secretAccessKey: secretKeyEl.value.trim(),
-        bucket: bucketEl.value.trim(),
-        endpoint: serverEl.value.trim(),
-        region: REGION,
-        partSize: PART_SIZE,
-        queueSize: QUEUE_SIZE,
+    ? makeLinkUploader({
+        link: LINK,
+        buildClientRecord: () =>
+          clientRecord({
+            app: "updeacon",
+            transform: "deacon",
+            groups,
+            extra: { deacon_version: DEACON_VERSION },
+          }),
+        humanBytes,
         onStatus: setStatus,
-      });
+        runVerb: "Filtering and uploading",
+      })
+    : creds.uploader({ onStatus: setStatus });
 
-  let dehostedBefore = 0; // input bytes of fully-dehosted files
-  let totalBasesIn = 0; // input bases dehosted (from per-file stats)
-
+  const view = makeRunView({
+    wrap: progressWrap,
+    bar: runProgress,
+    label: runLabel,
+    rows: fileRows,
+    groups,
+    filtering: true,
+    streaming: !LINK, // credential mode streams filtered output into a multipart upload
+    doneText: readsText("uploaded"),
+  });
+  let totalBasesIn = 0;
   let completed = 0;
-  let inFileLoop = false;
-  const uploadedKeys = []; // every object written, in upload order (manifest contents)
   try {
-    await uploader.preflight(keyBase);
-
-    inFileLoop = true;
-    setStatus(`Filtering and uploading to ${keyBase}`);
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      rows[i].li.className = "active";
-      rows[i].st.textContent = "filtering…";
-
-      let curProcessed = 0; // input bytes dehosted for this group
-      let curUploaded = 0; // output bytes uploaded for this group
-      let uploadTotal = 0; // output bytes to upload (link mode: known after spooling)
-      let uploading = false; // link mode uploads only once filtering is done
-      let fileStats = null;
-      let fileElapsed = 0;
-
-      const renderRow = () => {
-        if (uploading) {
-          const upct = uploadTotal ? Math.min(100, (curUploaded / uploadTotal) * 100) : 100;
-          rows[i].st.textContent = `uploading ${upct.toFixed(0)}%`;
-          return;
-        }
-        const dpct = item.size ? Math.min(100, (curProcessed / item.size) * 100) : 100;
-        rows[i].st.textContent = LINK
-          ? `filtering ${dpct.toFixed(0)}%`
-          : `filtered ${dpct.toFixed(0)}%, uploaded ${humanBytes(curUploaded)}`;
-      };
-      const onProgress = (m) => {
-        curProcessed = m.bytesProcessed || 0;
-        const pct = totalBytes ? ((dehostedBefore + curProcessed) / totalBytes) * 100 : 0;
-        dehostProgress.value = pct;
-        dehostLabel.textContent =
-          `Filtering ${i + 1} of ${items.length}: ` +
-          `${humanBytes(dehostedBefore + curProcessed)} / ${humanBytes(totalBytes)} ` +
-          `(${pct.toFixed(1)}%)`;
-        renderRow();
-      };
-      const onStats = (stats, elapsed) => {
-        fileStats = stats;
-        fileElapsed = Number(elapsed) || 0;
-      };
-      // Credential mode streams, so it never calls onUploadStart
-      const onUploadStart = (total) => {
-        uploading = true;
-        uploadTotal = total;
-        renderRow();
-      };
-      const onUploadProgress = (loaded) => {
-        curUploaded = loaded;
-        if (uploading) {
-          dehostLabel.textContent =
-            `Uploading ${i + 1} of ${items.length}: ` +
-            `${humanBytes(curUploaded)} / ${humanBytes(uploadTotal)}`;
-        }
-        renderRow();
-      };
-
-      const outputs = dehostGroup(item, { onProgress, onStats });
-      uploadedKeys.push(...(await uploader.uploadGroup(item, outputs, { onUploadStart, onUploadProgress })));
-
-      // Upload a Deacon-style JSON summary alongside the file
-      const summary = buildSummary({ item, stats: fileStats, elapsed: fileElapsed });
-      const summaryKey = `${item.key}.deacon.json`;
-      await uploader.putSmall(
-        summaryKey,
-        new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" }),
-        "application/json"
-      );
-      uploadedKeys.push(summaryKey);
-
-      dehostedBefore += item.size;
-      totalBasesIn += Number(fileStats?.basesIn || 0);
-      rows[i].li.className = "done";
-      const readsIn = Number(fileStats?.readsIn || 0);
-      const readsOut = Number(fileStats?.readsOut || 0);
-      rows[i].st.textContent = readsIn
-        ? `done. ${readsOut.toLocaleString()}/${readsIn.toLocaleString()} reads uploaded`
-        : "done";
-      completed++;
-    }
-
-    dehostProgress.value = 100;
-    dehostLabel.textContent =
-      `Processed ${humanBases(totalBasesIn)} of input across ${describeGroups(items.slice(0, completed))}.`;
-
-    // Write the manifest last, signalling upload completion
-    setStatus("Finalising (writing manifest) …");
-    await uploader.putSmall(
-      `${keyBase}/_MANIFEST.txt`,
-      new Blob([uploadedKeys.join("\n") + "\n"], { type: "text/plain" }),
-      "text/plain"
-    );
-
+    await runUpload({
+      groups,
+      keyBase,
+      uploader,
+      transform: deaconTransform({ engine, indexMeta }),
+      hooks: {
+        ...view,
+        onGroupStart(i, item) {
+          if (i === 0) setStatus(`Filtering and uploading to ${keyBase}`);
+          view.onGroupStart(i, item);
+        },
+        onGroupDone(i, item, result) {
+          totalBasesIn += Number(result.stats?.basesIn || 0);
+          completed++;
+          view.onGroupDone(i, item, result);
+        },
+        onFinalising() {
+          view.finish(
+            `Processed ${humanBases(totalBasesIn)} of input across ${describeGroups(groups.slice(0, completed))}.`
+          );
+          setStatus("Finalising (writing manifest) …");
+        },
+      },
+    });
     setStatus(`Upload complete (${keyBase})`, "success");
     uploadCompleted = true; // lock buttons until next selection
   } catch (err) {
-    const idx = completed; // the file that failed
-    if (inFileLoop && rows[idx]) {
-      rows[idx].li.className = "failed";
-      rows[idx].st.textContent = "failed";
-    }
+    busyIndicator.stop();
+    if (err?.groupIndex != null) view.fail(err.groupIndex);
     console.error(err);
     setStatus(formatError(err), "error");
   } finally {
-    isUploading = false;
-    resetBtn.disabled = false;
-    updateUploadEnabled();
+    setBusy(false);
   }
 }
 
-// Deacon-style JSON summary mirroring the CLI schema; paired groups fill input2/output2
-function buildSummary({ item, stats, elapsed }) {
-  const paths = groupRelativePaths(item);
-  const seqsIn = Number(stats?.readsIn || 0);
-  const seqsOut = Number(stats?.readsOut || 0);
-  const bpIn = Number(stats?.basesIn || 0);
-  const bpOut = Number(stats?.basesOut || 0);
-  const t = Number(elapsed) || 0;
-  const prop = (num, den) => (den > 0 ? num / den : 0);
-  const rate = (n) => (t > 0 ? Math.round(n / t) : 0);
-  return {
-    version: DEACON_VERSION,
-    updeacon_version: UPDEACON_VERSION,
-    index: indexFilename,
-    input: paths.input,
-    input2: paths.input2,
-    output: item.key,
-    output2: item.kind === "paired" ? item.key2 : null,
-    k: indexK,
-    w: indexW,
-    abs_threshold: FILTER_DEFAULTS.absThreshold,
-    rel_threshold: FILTER_DEFAULTS.relThreshold,
-    prefix_length: FILTER_DEFAULTS.prefixLength,
-    deplete: FILTER_DEFAULTS.deplete,
-    rename: false,
-    rename_random: false,
-    seqs_in: seqsIn,
-    seqs_out: seqsOut,
-    seqs_out_proportion: prop(seqsOut, seqsIn),
-    seqs_removed: seqsIn - seqsOut,
-    seqs_removed_proportion: prop(seqsIn - seqsOut, seqsIn),
-    bp_in: bpIn,
-    bp_out: bpOut,
-    bp_out_proportion: prop(bpOut, bpIn),
-    bp_removed: bpIn - bpOut,
-    bp_removed_proportion: prop(bpIn - bpOut, bpIn),
-    time: t,
-    seqs_per_second: rate(seqsIn),
-    bp_per_second: rate(bpIn),
-    seqs_per_second_total: rate(seqsIn),
-    bp_per_second_total: rate(bpIn),
-  };
-}
-
-function formatError(err) {
-  const name = err?.name || "Error";
-  const msg = err?.message || String(err);
-  // Preflight tags the cause definitively (see uploadAll)
-  if (err?.updeaconCause === "credentials") {
-    return (
-      `Authentication failed. Check S3 credentials and try again.`
-    );
-  }
-  if (err?.updeaconCause === "size") {
-    return msg;
-  }
-  if (err?.updeaconCause === "storage") {
-    return msg;
-  }
-  if (err?.updeaconCause === "link") {
-    return (
-      `${msg}\nThis magic link is no longer valid. Ask whoever sent it for a new one.`
-    );
-  }
-  if (err?.updeaconCause === "cors") {
-    return (
-      `Connection failed. Couldn't reach the object store from this page. The ` +
-      `bucket must allow PUT/POST from this origin and expose the ETag header.`
-    );
-  }
-  if (err?.updeaconCause === "network") {
-    return `${msg} Check your internet connection and try again.`;
-  }
-  // fetch() throws TypeError on network/CORS failures; message varies by browser
-  if (
-    name === "TypeError" ||
-    /CORS|Failed to fetch|NetworkError|Load failed/i.test(msg)
-  ) {
-    return (
-      `${msg}. Check bucket CORS policy. The bucket must allow ` +
-      `PUT/POST from this origin and expose the ETag header.`
-    );
-  }
-  if (/AccessDenied|InvalidAccessKeyId|SignatureDoesNotMatch|403/i.test(name + msg)) {
-    return `${name}. Check the access key, secret key, and bucket permissions.`;
-  }
-  return `${name}. ${msg}`;
-}
+uploadBtn.addEventListener("click", uploadAll);
+filterBtn.addEventListener("click", filterOnly);
 
 // --- Startup -----------------------------------------------------------------
 // Start index load in parallel with WASM init (bytes queue until READY); last so all decls exist
