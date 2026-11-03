@@ -2,4 +2,4 @@
 export const VERSION = "0.5.0";
 
 // Replaced with the source commit by scripts/deploy.sh
-export const BUILD_COMMIT = "87dbf05";
+export const BUILD_COMMIT = "6667cc5";

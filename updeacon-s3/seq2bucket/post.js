@@ -1,7 +1,7 @@
 // Magic-link transport: POST Object with retry, and idle (never total-duration)
 // timeouts. A POST is single-shot: no multipart, 5 GB per object, body sent in one
 // request, and a retry re-sends from byte 0.
-import { describeExpiry } from "./link.js?v=87dbf05";
+import { describeExpiry } from "./link.js?v=6667cc5";
 
 const RETRY_BASE_MS = 1000;
 const RETRY_MAX_MS = 60 * 1000;

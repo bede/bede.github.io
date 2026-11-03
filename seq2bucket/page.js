@@ -1,11 +1,11 @@
 // seq2bucket reference page: upload fa/fq files without filtering, through a magic link or
 // with S3 credentials (no fragment), exactly as updeacon-s3 does with filtering.
-import { describeGroups } from "./pairing.js?v=87dbf05";
-import { parseMagicLink } from "./link.js?v=87dbf05";
-import { clientRecord, findOversizeFiles, groupFiles, rawTransform, runUpload } from "./pipeline.js?v=87dbf05";
-import { makeLinkUploader } from "./uploaders.js?v=87dbf05";
-import { RAW_ROOT } from "./mint.js?v=87dbf05";
-import { VERSION, BUILD_COMMIT } from "./version.js?v=87dbf05";
+import { describeGroups } from "./pairing.js?v=6667cc5";
+import { parseMagicLink } from "./link.js?v=6667cc5";
+import { clientRecord, findOversizeFiles, groupFiles, rawTransform, runUpload } from "./pipeline.js?v=6667cc5";
+import { makeLinkUploader } from "./uploaders.js?v=6667cc5";
+import { RAW_ROOT } from "./mint.js?v=6667cc5";
+import { VERSION, BUILD_COMMIT } from "./version.js?v=6667cc5";
 import {
   bindCredentialForm,
   confirmDialog,
@@ -22,7 +22,7 @@ import {
   renderLinkError,
   selectSequences,
   setButtonDisabled,
-} from "./ui.js?v=87dbf05";
+} from "./ui.js?v=6667cc5";
 
 
 // Signed POST policy in the fragment, so it never reaches the web server

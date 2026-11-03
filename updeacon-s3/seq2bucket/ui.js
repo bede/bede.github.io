@@ -1,8 +1,8 @@
 // Shared page plumbing for apps built on seq2bucket: formatting, file selection, the
 // magic-link banner, the upload-name field, run progress and error messages.
-import { SEQ_RE, pairSequenceFiles } from "./pairing.js?v=87dbf05";
-import { describeExpiry } from "./link.js?v=87dbf05";
-import { makeCredentialUploader } from "./uploaders.js?v=87dbf05";
+import { SEQ_RE, pairSequenceFiles } from "./pairing.js?v=6667cc5";
+import { describeExpiry } from "./link.js?v=6667cc5";
+import { makeCredentialUploader } from "./uploaders.js?v=6667cc5";
 
 // --- Formatting --------------------------------------------------------------
 export function humanBytes(n) {

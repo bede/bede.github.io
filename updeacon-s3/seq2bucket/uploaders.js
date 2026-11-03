@@ -2,9 +2,9 @@
 // Object). Both expose preflight / uploadGroup / putSmall, so the pipeline is
 // mode-agnostic. UI code supplies status hooks; transport, retry, spooling and
 // preflight behaviour stay independently testable here.
-import { describeExpiry } from "./link.js?v=87dbf05";
-import { postObjectWithRetry, sleep, waitForOnline, SMALL_MS } from "./post.js?v=87dbf05";
-import { spoolToFile, spoolName, releaseSpool, prepareSpoolStorage } from "./spool.js?v=87dbf05";
+import { describeExpiry } from "./link.js?v=6667cc5";
+import { postObjectWithRetry, sleep, waitForOnline, SMALL_MS } from "./post.js?v=6667cc5";
+import { spoolToFile, spoolName, releaseSpool, prepareSpoolStorage } from "./spool.js?v=6667cc5";
 
 const onlineNow = () => typeof navigator === "undefined" || navigator.onLine !== false;
 

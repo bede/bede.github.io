@@ -1,8 +1,8 @@
 // Companion page for minting magic links in the browser, shared by updeacon-s3 and
 // seq2bucket. <body data-raw="1"> puts uploads under raw/. The link opens the app in
 // the same directory.
-import { mintMagicLink } from "./mint.js?v=87dbf05";
-import { humanBytes, humanDate } from "./ui.js?v=87dbf05";
+import { mintMagicLink } from "./mint.js?v=6667cc5";
+import { humanBytes, humanDate } from "./ui.js?v=6667cc5";
 
 const $ = (id) => document.getElementById(id);
 const isRaw = document.body.dataset.raw === "1";

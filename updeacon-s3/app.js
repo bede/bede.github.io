@@ -1,12 +1,12 @@
 // updeacon-s3: filter fa/fq with Deacon in the browser, then upload to S3 via seq2bucket
-import { DEACON_VERSION } from "./protocol.js?v=87dbf05";
-import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=87dbf05";
-import { describeGroups } from "./seq2bucket/pairing.js?v=87dbf05";
-import { parseMagicLink } from "./seq2bucket/link.js?v=87dbf05";
-import { purgeStaleSpools } from "./seq2bucket/spool.js?v=87dbf05";
-import { clientRecord, findOversizeFiles, runUpload } from "./seq2bucket/pipeline.js?v=87dbf05";
-import { makeLinkUploader } from "./seq2bucket/uploaders.js?v=87dbf05";
-import { VERSION, BUILD_COMMIT } from "./seq2bucket/version.js?v=87dbf05";
+import { DEACON_VERSION } from "./protocol.js?v=6667cc5";
+import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=6667cc5";
+import { describeGroups } from "./seq2bucket/pairing.js?v=6667cc5";
+import { parseMagicLink } from "./seq2bucket/link.js?v=6667cc5";
+import { purgeStaleSpools } from "./seq2bucket/spool.js?v=6667cc5";
+import { clientRecord, findOversizeFiles, runUpload } from "./seq2bucket/pipeline.js?v=6667cc5";
+import { makeLinkUploader } from "./seq2bucket/uploaders.js?v=6667cc5";
+import { VERSION, BUILD_COMMIT } from "./seq2bucket/version.js?v=6667cc5";
 import {
   bindCredentialForm,
   bindFilePicker,
@@ -23,7 +23,7 @@ import {
   renderLinkError,
   selectSequences,
   setButtonDisabled,
-} from "./seq2bucket/ui.js?v=87dbf05";
+} from "./seq2bucket/ui.js?v=6667cc5";
 
 // --- Fixed configuration -----------------------------------------------------
 const MAX_INDEX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB

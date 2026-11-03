@@ -1,11 +1,11 @@
 // Deacon filtering for updeacon: drives worker.js (WASM) off the main thread and
 // exposes it as a seq2bucket transform. Filter params are FILTER_DEFAULTS
 // (deplete mode, panhuman thresholds).
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=87dbf05";
-import { groupRelativePaths } from "./seq2bucket/pairing.js?v=87dbf05";
-import { VERSION } from "./seq2bucket/version.js?v=87dbf05";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=6667cc5";
+import { groupRelativePaths } from "./seq2bucket/pairing.js?v=6667cc5";
+import { VERSION } from "./seq2bucket/version.js?v=6667cc5";
 
-const ASSET_VERSION = "87dbf05";
+const ASSET_VERSION = "6667cc5";
 
 // Filtered output is always gzip; uncompressed inputs get a .gz suffix so the name stays honest
 const GZ_RE = /\.gz$/i;

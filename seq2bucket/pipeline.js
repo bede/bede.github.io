@@ -12,8 +12,8 @@
 //   start(group, hooks)    -> { body | stream } or { bodyR1, bodyR2 | streamR1, streamR2 };
 //                          may call hooks.onProgress(msg) and hooks.onStats(stats, elapsed)
 //   extras(item, result)?  -> [{ key, body, contentType }] uploaded after the group
-import { groupRelativePaths } from "./pairing.js?v=87dbf05";
-import { VERSION, BUILD_COMMIT } from "./version.js?v=87dbf05";
+import { groupRelativePaths } from "./pairing.js?v=6667cc5";
+import { VERSION, BUILD_COMMIT } from "./version.js?v=6667cc5";
 
 export const groupFiles = (group) => (group.kind === "paired" ? [group.file1, group.file2] : [group.file]);
 

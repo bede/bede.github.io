@@ -1,8 +1,8 @@
 // sapiometer: in-browser human-content check
-import { MSG, DETECT_DEFAULTS } from "./protocol.js?v=87dbf05";
-import { SEQ_RE, pairSequenceFiles } from "./seq2bucket/pairing.js?v=87dbf05";
+import { MSG, DETECT_DEFAULTS } from "./protocol.js?v=6667cc5";
+import { SEQ_RE, pairSequenceFiles } from "./seq2bucket/pairing.js?v=6667cc5";
 
-const ASSET_VERSION = "87dbf05";
+const ASSET_VERSION = "6667cc5";
 
 const INDEX_URL =
   "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61c99.pidx";
