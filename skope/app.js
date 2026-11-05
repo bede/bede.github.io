@@ -1,6 +1,6 @@
 // Page logic for the skope-wasm demo. Queries run in worker.js
-import { MSG, PHASE } from "./protocol.js?v=91f91aa";
-import { SEQ_RE, describeGroups, pairSequenceFiles } from "./pairing.js?v=91f91aa";
+import { MSG, PHASE } from "./protocol.js?v=59e30b0";
+import { SEQ_RE, describeGroups, pairSequenceFiles } from "./pairing.js?v=59e30b0";
 
 // Source commit, from the ?v= cache token deploy.sh stamps on this module
 const BUILD = new URL(import.meta.url).searchParams.get("v") ?? "dev";
