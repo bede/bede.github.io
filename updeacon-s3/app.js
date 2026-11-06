@@ -1,31 +1,27 @@
-// updeacon-s3: filter fa/fq with Deacon in the browser, then upload to S3 via seq2bucket
-import { DEACON_VERSION } from "./protocol.js?v=6667cc5";
-import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=6667cc5";
-import { describeGroups } from "./seq2bucket/pairing.js?v=6667cc5";
-import { parseMagicLink } from "./seq2bucket/link.js?v=6667cc5";
-import { purgeStaleSpools } from "./seq2bucket/spool.js?v=6667cc5";
-import { clientRecord, findOversizeFiles, runUpload } from "./seq2bucket/pipeline.js?v=6667cc5";
-import { makeLinkUploader } from "./seq2bucket/uploaders.js?v=6667cc5";
-import { VERSION, BUILD_COMMIT } from "./seq2bucket/version.js?v=6667cc5";
+// updeacon-s3: filter fa/fq with Deacon in the browser, then upload via sssender
+import { DEACON_VERSION } from "./protocol.js?v=bd47d2f";
+import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=bd47d2f";
+import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=bd47d2f";
+import { VERSION, BUILD_COMMIT } from "./version.js?v=bd47d2f";
+import { purgeStaleSpools } from "./sssender/core/spool.js?v=bd47d2f";
+import { findOversizeFiles } from "./sssender/core/pipeline.js?v=bd47d2f";
+import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=bd47d2f";
+import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=bd47d2f";
 import {
   bindCredentialForm,
-  bindFilePicker,
   bindUploadName,
-  formatError,
-  humanBases,
   humanBytes,
   makeBusyIndicator,
-  makeRunView,
   makeStatus,
   oversizeMessage,
-  renderFileList,
-  renderLinkBanner,
-  renderLinkError,
-  selectSequences,
   setButtonDisabled,
-} from "./seq2bucket/ui.js?v=6667cc5";
+  summariseSelection,
+} from "./sssender/ui/ui.js?v=bd47d2f";
 
 // --- Fixed configuration -----------------------------------------------------
+const APP = "updeacon";
+const ROOT = "updeacon/"; // credential uploads, kept in step with mint.html's data-root
+const SPOOL_DIR = "updeacon-spool"; // predates sssender. Renaming would orphan old spools
 const MAX_INDEX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 
 const INDEX_URL =
@@ -33,15 +29,7 @@ const INDEX_URL =
 const INDEX_FILENAME = "panhuman-1.k31w25c9b16.pidx";
 const INDEX_DISPLAY_NAME = "Index: panhuman-1"; // shown in panel; filename kept for summaries
 
-// --- Magic link --------------------------------------------------------------
-// Signed POST policy in the fragment, so it never reaches the web server
-let LINK = null;
-let linkError = null;
-try {
-  LINK = parseMagicLink(location.hash);
-} catch (err) {
-  linkError = err.message;
-}
+const { link: LINK, linkError } = readMagicLink();
 
 // --- DOM ---------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -52,26 +40,18 @@ const indexInfo = $("index-info");
 const indexProgress = $("index-progress");
 const indexRetry = $("index-retry");
 const indexDownload = $("index-download");
-const dirZone = $("dir-zone");
-const dirInput = $("dir-input");
-const dirSummary = $("dir-summary");
 const uploadBtn = $("upload-btn");
 const filterBtn = $("filter-btn");
 const resetBtn = $("reset-btn");
 const progressWrap = $("progress-wrap");
 const runProgress = $("run-progress");
 const runLabel = $("run-label");
-const fileListEl = $("file-list");
 const purgeIndexEl = $("purge-index");
-const credsEl = $("creds");
-const linkBannerEl = $("link-banner");
-const usageCredsEl = $("usage-creds");
-const usageLinkEl = $("usage-link");
 
 const setStatus = makeStatus($("status"));
 const uploadName = bindUploadName({ prefixEl: $("name-prefix"), inputEl: $("run-name") });
-// No heading animation on updeacon; this just puts the percentage in the tab title
-const busyIndicator = makeBusyIndicator({ mascot: null, progress: runProgress, name: "updeacon-s3" });
+const busyIndicator = makeBusyIndicator({ progress: runProgress });
+const cancel = bindCancel({ button: $("cancel-btn"), setStatus });
 const creds = bindCredentialForm({
   server: $("server"),
   bucket: $("bucket"),
@@ -85,7 +65,7 @@ const creds = bindCredentialForm({
 });
 
 // --- State -------------------------------------------------------------------
-let selectedFiles = []; // work groups: single file or paired R1/R2
+let selectedFiles = []; // work groups, each one file or an R1/R2 pair
 let fileRows = []; // { li, st } DOM rows, one per selected group (same order)
 let isBusy = false; // filtering or uploading; blocks other actions
 let uploadCompleted = false; // upload finished; lock buttons until next selection
@@ -95,12 +75,35 @@ let indexK = null; // k-mer length parsed from the index info string
 let indexW = null; // window size parsed from the index info string
 let indexFailed = false; // download failed; panel acts as a manual drop target
 let indexNeedsDownload = false; // not cached; panel click starts the download
-let linkExpired = false; // magic link is past its expiry (server enforces too)
 let oversizeFiles = []; // inputs above the link's per-object cap
+let indexFile = null; // a dropped local index, else the cached copy is used
 
 const indexMeta = () => ({ filename: indexFilename, k: indexK, w: indexW });
 
+// --- Mode: magic link vs S3 credentials --------------------------------------
+// Link errors go in the banner, as initIndex() overwrites #status
+const linkExpired = showMode({
+  link: LINK,
+  linkError,
+  app: APP,
+  version: VERSION,
+  commit: BUILD_COMMIT,
+  bucket: creds.bucket,
+  onTick: () => updateUploadEnabled(),
+});
+if (LINK) purgeStaleSpools({ dir: SPOOL_DIR });
+
 // --- Helpers -----------------------------------------------------------------
+function humanBases(bp) {
+  const units = ["bp", "kbp", "Mbp", "Gbp", "Tbp"];
+  let i = 0;
+  while (bp >= 1000 && i < units.length - 1) {
+    bp /= 1000;
+    i++;
+  }
+  return `${bp.toFixed(i === 0 ? 0 : 1)}${units[i]}`;
+}
+
 // What the user still has to do, given index, selection and mode
 function readyStatus() {
   if (!indexLoaded) return "";
@@ -109,7 +112,7 @@ function readyStatus() {
       ? "Index loaded. Select sequences to filter and upload"
       : "Index loaded. Select sequences and enter S3 credentials";
   }
-  if (LINK && linkExpired) return "";
+  if (LINK && linkExpired()) return "";
   if (!LINK && !creds.filled()) return "Enter S3 credentials to upload, or press 'Filter only'";
   return "Press either 'Filter & upload' or 'Filter only' to begin";
 }
@@ -123,7 +126,7 @@ function updateUploadEnabled() {
   const haveFiles = selectedFiles.length > 0;
   // Filter only never touches S3, so a bad link doesn't disable it
   setButtonDisabled(filterBtn, isBusy || !haveFiles);
-  const uploadBlocked = LINK ? linkExpired || oversizeFiles.length > 0 : !creds.filled();
+  const uploadBlocked = LINK ? linkExpired() || oversizeFiles.length > 0 : !creds.filled();
   setButtonDisabled(uploadBtn, isBusy || !haveFiles || !!linkError || uploadBlocked);
 }
 
@@ -131,74 +134,56 @@ function setBusy(busy) {
   isBusy = busy;
   resetBtn.disabled = busy;
   updateUploadEnabled();
+  selection.render();
   if (busy) busyIndicator.start();
   else busyIndicator.finish();
 }
 
-// --- Mode: magic link vs S3 credentials --------------------------------------
-function renderBanner() {
-  linkExpired = renderLinkBanner(linkBannerEl, LINK);
-}
-
-function initMode() {
-  if (linkError) {
-    // Banner, not #status: initIndex() overwrites #status moments later
-    credsEl.hidden = true;
-    renderLinkError(linkBannerEl, `${linkError} Ask whoever sent it for a new one.`);
-    return;
-  }
-  if (!LINK) {
-    console.log(`updeacon ${VERSION}: credential mode, bucket "${creds.bucket()}" (commit ${BUILD_COMMIT})`);
-    return;
-  }
-
-  // Never log the link itself: the signature is a bearer credential
-  console.log(
-    `updeacon ${VERSION}: magic-link upload to "${LINK.bucket}/${LINK.prefix}" ` +
-      `at ${LINK.endpoint} (commit ${BUILD_COMMIT})`
-  );
-  credsEl.hidden = true;
-  $("mint-entry").hidden = true; // link recipients have no keys to sign with
-  usageCredsEl.hidden = true;
-  usageLinkEl.hidden = false;
-  linkBannerEl.hidden = false;
-  renderBanner();
-  setInterval(renderBanner, 60000); // tick the countdown, and expire in place
-  purgeStaleSpools();
-}
-
 // --- Selection ---------------------------------------------------------------
-function setSelection(files) {
-  busyIndicator.stop(); // a new selection or Reset clears a finished run's title
-  uploadCompleted = false; // fresh selection clears the post-upload lock
-  uploadName.rearm(); // a link is reusable
-  const sel = selectSequences(files);
-  selectedFiles = sel.groups;
-  dirSummary.textContent = sel.summary;
-  dirZone.classList.toggle("loaded", sel.groups.length > 0);
-  oversizeFiles = LINK ? findOversizeFiles(selectedFiles, LINK.maxBytes) : [];
-  if (sel.error) setStatus(sel.error, "error");
-  else if (oversizeFiles.length) {
-    setStatus(
-      oversizeMessage(oversizeFiles, LINK.maxBytes, "Remove these files, or upload them with S3 credentials."),
-      "error"
-    );
-  } else setStatus(readyStatus());
-  progressWrap.style.display = "none";
-  fileRows = renderFileList(fileListEl, selectedFiles);
-  updateUploadEnabled();
+// "2 pairs, 1 unpaired", only when something paired
+function pairingDetails(sel) {
+  const pairs = sel.groups.filter(isPaired).length;
+  const unpaired = sel.groups.length - pairs;
+  if (!pairs) return [];
+  return [`${pairs} pair${pairs === 1 ? "" : "s"}`, ...(unpaired ? [`${unpaired} unpaired`] : [])];
 }
 
-bindFilePicker({ zone: dirZone, input: dirInput, isBusy: () => isBusy, onFiles: setSelection });
+const selection = bindSelection({
+  options: { accept: (f) => SEQ_RE.test(f.name), group: pairSequenceFiles },
+  summarise: (sel) =>
+    sel.error ? "Pairing error" : summariseSelection(sel, { noun: "sequence file", details: pairingDetails }),
+  isBusy: () => isBusy,
+  onChange(sel) {
+    busyIndicator.stop(); // a new selection or Reset clears a finished run's title
+    uploadCompleted = false; // fresh selection clears the post-upload lock
+    uploadName.rearm(); // a link is reusable
+    selectedFiles = sel.groups;
+    oversizeFiles = LINK ? findOversizeFiles(selectedFiles, LINK.maxBytes) : [];
+    if (sel.error) setStatus(sel.error, "error");
+    else if (oversizeFiles.length) {
+      setStatus(
+        oversizeMessage(oversizeFiles, LINK.maxBytes, "Remove these files, or upload them with S3 credentials."),
+        "error"
+      );
+    } else setStatus(readyStatus());
+    progressWrap.style.display = "none";
+    fileRows = renderFileList($("file-list"), selectedFiles);
+    updateUploadEnabled();
+  },
+});
 
 resetBtn.addEventListener("click", () => {
-  if (isBusy) return;
-  dirInput.value = "";
-  setSelection([]);
+  if (!isBusy) selection.reset();
 });
 
 // --- Deacon engine -----------------------------------------------------------
 const engine = createDeaconEngine({
+  // After a crash, as the dead worker had the bytes
+  async reloadIndex() {
+    const source = indexFile ?? (await getCachedIndex(INDEX_URL));
+    if (!source) throw new Error("the index is no longer cached; load it again");
+    return source.arrayBuffer();
+  },
   onIndexLoaded(info, { k, w }) {
     indexLoaded = true;
     indexFailed = false;
@@ -223,7 +208,7 @@ const engine = createDeaconEngine({
 });
 
 // --- Index selection ---------------------------------------------------------
-// Click to download (uncached) or select a local .idx (failed); drop works in either state
+// Click to download (uncached) or select a local .idx (failed). Drop works in either state
 indexStatus.addEventListener("click", () => {
   if (isBusy) return;
   if (indexNeedsDownload) downloadAndLoadIndex();
@@ -259,6 +244,7 @@ async function loadIndexFile(file) {
   indexFailed = false;
   indexNeedsDownload = false;
   indexFilename = file.name;
+  indexFile = file;
   indexStatus.classList.remove("loaded", "failed", "needs-download", "dragover");
   indexRetry.hidden = true;
   indexDownload.hidden = true;
@@ -271,7 +257,7 @@ async function loadIndexFile(file) {
 
 // --- Index auto-download + cache ---------------------------------------------
 // Cache in IndexedDB (handles the ~850 MB blob) for instant offline reloads. The
-// database name predates seq2bucket; renaming it would force a re-download.
+// database name predates sssender, and renaming it would force a re-download.
 const IDB_NAME = "updeacon";
 const IDB_STORE = "index";
 
@@ -325,7 +311,7 @@ async function clearCachedIndex(url) {
   }
 }
 
-// GC cached indexes other than keepUrl (keyed by URL, else linger forever); run on startup
+// GC cached indexes other than keepUrl (keyed by URL, else linger forever). Runs on startup
 async function pruneStaleIndexes(keepUrl) {
   const db = await openIdxDB();
   try {
@@ -415,6 +401,7 @@ function showIndexFailure(err) {
 
 // Load cached index if present, else prompt to download (no automatic download)
 async function initIndex() {
+  indexFile = null;
   indexFilename = INDEX_FILENAME;
   indexFailed = false;
   indexNeedsDownload = false;
@@ -438,6 +425,7 @@ async function initIndex() {
 }
 
 async function downloadAndLoadIndex() {
+  indexFile = null;
   indexNeedsDownload = false;
   indexFailed = false;
   indexFilename = INDEX_FILENAME;
@@ -474,7 +462,7 @@ indexRetry.addEventListener("click", (e) => {
 purgeIndexEl.addEventListener("click", async (e) => {
   e.preventDefault();
   if (isBusy) return;
-  // Update the UI first — Safari's IndexedDB can stall on delete
+  // Update the UI first, as Safari's IndexedDB can stall on delete
   indexLoaded = false;
   engine.reset();
   updateUploadEnabled();
@@ -501,6 +489,8 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+const FILTERING = { verb: "filtering", past: "filtered" }; // for the run view
+
 const readsText = (verb) => (_item, { stats }) => {
   const readsIn = Number(stats?.readsIn || 0);
   const readsOut = Number(stats?.readsOut || 0);
@@ -512,6 +502,7 @@ async function filterOnly() {
   const groups = selectedFiles;
   if (!groups.length) return;
   logFilterParams(indexMeta());
+  const signal = cancel.start();
   setBusy(true);
   setStatus("Filtering…");
 
@@ -521,44 +512,73 @@ async function filterOnly() {
     label: runLabel,
     rows: fileRows,
     groups,
-    filtering: true,
+    transform: FILTERING,
     doneText: readsText("kept"),
   });
   let totalBasesIn = 0;
-  let completed = 0;
+  const skipped = []; // groups whose input Deacon couldn't read
+  let current = 0;
   try {
     for (let i = 0; i < groups.length; i++) {
+      signal.throwIfAborted();
+      current = i;
       const group = groups[i];
       view.onGroupStart(i);
-      const result = { stats: null };
-      // Response.blob() drains the pull-stream, materialising output in memory
-      const outputs = engine.filterGroup(group, {
-        onProgress: (m) => view.onTransformProgress(i, m),
-        onStats: (stats) => (result.stats = stats),
-      });
-      if (group.kind === "paired") {
-        const [blob1, blob2] = await Promise.all([
-          new Response(outputs.streamR1).blob(),
-          new Response(outputs.streamR2).blob(),
-        ]);
-        downloadBlob(blob1, gzName(group.file1.name));
-        downloadBlob(blob2, gzName(group.file2.name));
-      } else {
-        downloadBlob(await new Response(outputs.stream).blob(), gzName(group.file.name));
+      let result;
+      let blobs = null;
+      // As in uploads: one more go after a crash, then skip
+      for (let attempt = 1; ; attempt++) {
+        result = { stats: null };
+        // Response.blob() drains in memory. A pair drains together, as the worker
+        // interleaves them. The signal lets Cancel stop mid-file
+        const outputs = engine.filterGroup(group, {
+          onProgress: (m) => view.onTransformProgress(i, m),
+          onStats: (stats) => (result.stats = stats),
+        });
+        try {
+          blobs = await Promise.all(
+            outputs.map((o) => new Response(o.stream.pipeThrough(new TransformStream(), { signal })).blob())
+          );
+          break;
+        } catch (err) {
+          if (signal.aborted) throw signal.reason;
+          if (err?.retry && attempt < 2) {
+            view.onGroupRetry(i, group, err);
+            continue;
+          }
+          if (err?.kind !== "input") throw err;
+          console.warn(`updeacon: skipped ${group.label}:`, err);
+          skipped.push(group);
+          view.onGroupFailed(i, group, err);
+          break;
+        }
       }
+      if (!blobs) continue;
+      blobs.forEach((blob, j) => downloadBlob(blob, gzName(group.files[j].name)));
       totalBasesIn += Number(result.stats?.basesIn || 0);
       view.onGroupDone(i, group, result);
-      completed++;
     }
-    const done = describeGroups(groups.slice(0, completed));
+    const done = describeGroups(groups.filter((g) => !skipped.includes(g)));
     view.finish(`Processed ${humanBases(totalBasesIn)} of input across ${done}.`);
-    setStatus(`Filtering complete: ${done} downloaded`, "success");
+    if (skipped.length) {
+      setStatus(
+        `Filtering finished: ${done} downloaded, but ${describeGroups(skipped)} couldn't be read and ` +
+          `${skipped.length === 1 ? "was" : "were"} skipped. Hover a failed row for the reason.`,
+        "error"
+      );
+    } else setStatus(`Filtering complete: ${done} downloaded`, "success");
   } catch (err) {
     busyIndicator.stop();
-    view.fail(completed);
-    console.error(err);
-    setStatus("Filtering failed: " + (err?.message || err), "error");
+    if (signal.aborted) {
+      view.cancel();
+      setStatus("Filtering cancelled. Files already filtered have been downloaded.");
+    } else {
+      view.fail(current);
+      console.error(err);
+      setStatus("Filtering failed: " + (err?.message || err), "error");
+    }
   } finally {
+    cancel.end();
     setBusy(false);
   }
 }
@@ -567,83 +587,35 @@ async function filterOnly() {
 async function uploadAll() {
   const groups = selectedFiles;
   if (!groups.length) return;
-  const dirName = uploadName.commit();
   // Own timestamped dir inside the prefix, so a reused link never overwrites
-  const keyBase = LINK ? LINK.prefix + dirName : dirName;
-
+  const keyBase = (LINK ? LINK.prefix : ROOT) + uploadName.commit();
   logFilterParams(indexMeta());
-  setBusy(true);
-  setStatus(`Uploading to ${dirName}/ …`);
-
-  const uploader = LINK
-    ? makeLinkUploader({
-        link: LINK,
-        buildClientRecord: () =>
-          clientRecord({
-            app: "updeacon",
-            transform: "deacon",
-            groups,
-            extra: { deacon_version: DEACON_VERSION },
-          }),
-        humanBytes,
-        onStatus: setStatus,
-        runVerb: "Filtering and uploading",
-      })
-    : creds.uploader({ onStatus: setStatus });
-
-  const view = makeRunView({
-    wrap: progressWrap,
-    bar: runProgress,
-    label: runLabel,
-    rows: fileRows,
-    groups,
-    filtering: true,
-    streaming: !LINK, // credential mode streams filtered output into a multipart upload
-    doneText: readsText("uploaded"),
-  });
   let totalBasesIn = 0;
-  let completed = 0;
-  try {
-    await runUpload({
-      groups,
-      keyBase,
-      uploader,
-      transform: deaconTransform({ engine, indexMeta }),
-      hooks: {
-        ...view,
-        onGroupStart(i, item) {
-          if (i === 0) setStatus(`Filtering and uploading to ${keyBase}`);
-          view.onGroupStart(i, item);
-        },
-        onGroupDone(i, item, result) {
-          totalBasesIn += Number(result.stats?.basesIn || 0);
-          completed++;
-          view.onGroupDone(i, item, result);
-        },
-        onFinalising() {
-          view.finish(
-            `Processed ${humanBases(totalBasesIn)} of input across ${describeGroups(groups.slice(0, completed))}.`
-          );
-          setStatus("Finalising (writing manifest) …");
-        },
-      },
-    });
-    setStatus(`Upload complete (${keyBase})`, "success");
-    uploadCompleted = true; // lock buttons until next selection
-  } catch (err) {
-    busyIndicator.stop();
-    if (err?.groupIndex != null) view.fail(err.groupIndex);
-    console.error(err);
-    setStatus(formatError(err), "error");
-  } finally {
-    setBusy(false);
-  }
+  uploadCompleted = await uploadSelection({
+    groups,
+    keyBase,
+    link: LINK,
+    creds,
+    transform: deaconTransform({ engine, indexMeta }),
+    client: { app: APP, appVersion: VERSION, commit: BUILD_COMMIT, extra: { deacon_version: DEACON_VERSION } },
+    spoolDir: SPOOL_DIR,
+    rows: fileRows,
+    view: { transform: FILTERING, doneText: readsText("uploaded") },
+    runLabel: "Filtering and uploading",
+    describe: describeGroups,
+    onGroupDone: (_i, _item, result) => (totalBasesIn += Number(result.stats?.basesIn || 0)),
+    finishText: (done) => `Processed ${humanBases(totalBasesIn)} of input across ${describeGroups(done)}.`,
+    setStatus,
+    setBusy,
+    busyIndicator,
+    cancel,
+  });
+  updateUploadEnabled(); // lock the buttons until the next selection
 }
 
 uploadBtn.addEventListener("click", uploadAll);
 filterBtn.addEventListener("click", filterOnly);
 
 // --- Startup -----------------------------------------------------------------
-// Start index load in parallel with WASM init (bytes queue until READY); last so all decls exist
-initMode();
+// Start index load in parallel with WASM init (bytes queue until READY). Last, so all decls exist
 initIndex();

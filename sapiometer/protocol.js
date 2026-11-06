@@ -13,7 +13,7 @@ export const MSG = Object.freeze({
   OUTPUT_CHUNK_BATCH: "output_chunk_batch",
 });
 
-// Deacon filter params (deplete mode, panhuman defaults); shared by worker and main thread
+// Deacon filter params (deplete mode, panhuman defaults), shared by worker and main thread
 export const FILTER_DEFAULTS = Object.freeze({
   deplete: true,
   absThreshold: 2,
@@ -30,5 +30,5 @@ export const DETECT_DEFAULTS = Object.freeze({
   relThreshold: 0,
 });
 
-// deacon crate version the bundled WASM was built from; bump when regenerating pkg/
+// deacon crate version the bundled WASM was built from. Bump when regenerating pkg/
 export const DEACON_VERSION = "deacon 0.19.1";

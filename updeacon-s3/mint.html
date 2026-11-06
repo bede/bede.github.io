@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>updeacon-s3 magic link</title>
-<link rel="stylesheet" href="./seq2bucket/fonts.css?v=6667cc5">
-<link rel="stylesheet" href="./seq2bucket/style.css?v=6667cc5">
+<link rel="stylesheet" href="./sssender/ui/fonts.css?v=bd47d2f">
+<link rel="stylesheet" href="./sssender/ui/style.css?v=bd47d2f">
 </head>
-<body>
+<body data-root="updeacon/">
 <h1>updeacon-s3</h1>
 <p class="subtitle">Mint a magic link enabling upload to a specified bucket prefix for up to 7 days. S3 credentials entered here are used only for locally signing the POST request policy that enables upload and do not leave your machine.</p>
 
@@ -16,7 +16,7 @@
   <div class="field-row">
     <div class="field">
       <label for="server">Server address</label>
-      <input type="text" id="server" name="server" autocomplete="on" spellcheck="false" placeholder="S3 endpoint URL">
+      <input type="text" id="server" name="server" autocomplete="on" spellcheck="false" placeholder="S3 endpoint URL" value="https://">
     </div>
     <div class="field">
       <label for="bucket">Bucket</label>
@@ -66,6 +66,6 @@
 
 <p class="info footer-links"><a href="./">back to updeacon-s3</a></p>
 
-<script type="module" src="./seq2bucket/mint-page.js?v=6667cc5"></script>
+<script type="module" src="./sssender/ui/mint-page.js?v=bd47d2f"></script>
 </body>
 </html>

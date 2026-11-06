@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>updeacon-s3</title>
-<link rel="stylesheet" href="./seq2bucket/fonts.css?v=6667cc5">
-<link rel="stylesheet" href="./seq2bucket/style.css?v=6667cc5">
+<link rel="stylesheet" href="./sssender/ui/fonts.css?v=bd47d2f">
+<link rel="stylesheet" href="./sssender/ui/style.css?v=bd47d2f">
 <style>
   /* Deacon index panel (updeacon only) */
   .index-status { border: 1px solid #ddd; background: #fff; padding: 1rem; margin-bottom: 1rem; transition: all 0.2s; text-align: center; }
@@ -16,7 +16,7 @@
   .index-status progress { width: 100%; margin-top: 0.5rem; }
   .index-status .idx-info { font-size: 0.8rem; color: #888; margin-top: 0.3rem; }
   .index-status .idx-info:empty { display: none; }
-  /* Animated trailing dots for "Loading…" states; ::after cycles 0–3 dots, fixed-width so the label doesn't shift. */
+  /* Animated trailing dots for "Loading…" states. Fixed width so the label stays put. */
   .idx-info.loading-dots::after { content: ""; display: inline-block; width: 1.2em; text-align: left; animation: loading-dots 1.2s steps(4, end) infinite; }
   @keyframes loading-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75%, 100% { content: "..."; } }
   .index-status .index-actions { display: flex; gap: 0.8rem; justify-content: center; }
@@ -32,7 +32,7 @@
 <body>
 <h1>updeacon-s3</h1>
 <p class="subtitle">Securely filter and upload DNA sequences in fasta/fastq format directly to S3 object storage.
-  Runs <a href="https://github.com/bede/deacon">Deacon</a> in the browser to deplete human sequences prior to upload. FASTQ files are uploaded to a timestamped path prefix. Nested directory structures are preserved.</p>
+  Runs <a href="https://github.com/bede/deacon">Deacon</a> in the browser to deplete human sequences prior to upload. Files are uploaded to a timestamped path prefix. Nested directory structures are preserved.</p>
 <div class="section-head unnumbered">Usage</div>
 <div class="usage">
   <ol id="usage-link" hidden>
@@ -55,7 +55,7 @@
   <div class="field-row">
     <div class="field">
       <label for="server">Server address</label>
-      <input type="text" id="server" name="server" autocomplete="on" spellcheck="false" placeholder="S3 endpoint URL">
+      <input type="text" id="server" name="server" autocomplete="on" spellcheck="false" placeholder="S3 endpoint URL" value="https://">
     </div>
     <div class="field">
       <label for="bucket">Bucket</label>
@@ -95,6 +95,7 @@
   <div class="summary" id="dir-summary"></div>
   <div class="label">Click to select fasta/fastq[.gz] files, or drop files or a directory here.</div>
 </div>
+<div class="type-toggles" id="type-toggles" role="group" aria-label="File types to filter" hidden></div>
 
 <div class="section-head">Upload name (optional)</div>
 
@@ -109,6 +110,7 @@
   <button id="upload-btn" disabled>Filter &amp; upload</button>
   <button id="filter-btn" type="button" disabled>Filter only</button>
   <button id="reset-btn" type="button">Reset</button>
+  <button id="cancel-btn" type="button" class="secondary" hidden>Cancel</button>
 </div>
 
 <div class="progress-wrap" id="progress-wrap" style="display:none">
@@ -121,6 +123,6 @@
 
 <p class="info footer-links"><a href="#" id="purge-index">clear index cache</a><span id="mint-entry"> · <a href="./mint.html">mint magic link</a></span></p>
 
-<script type="module" src="./app.js?v=6667cc5"></script>
+<script type="module" src="./app.js?v=bd47d2f"></script>
 </body>
 </html>

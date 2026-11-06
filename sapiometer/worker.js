@@ -1,12 +1,12 @@
-import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=6667cc5";
+import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=bd47d2f";
 
-// Off-main-thread Deacon filtering; pull-driven (one batch per MSG.PULL) so memory stays bounded
+// Off-main-thread Deacon filtering, pull-driven (one batch per MSG.PULL) so memory stays bounded
 let wasm = null;
 let index = null;
-const ASSET_VERSION = "6667cc5";
+const ASSET_VERSION = "bd47d2f";
 const OUTPUT_BATCH_BYTES = 4 * 1024 * 1024; // 4 MiB
 
-// wasm-bindgen throws Result errors as plain strings with no .message; normalise so the reason survives
+// wasm-bindgen throws Result errors as plain strings with no .message. Normalise so the reason survives
 function errText(err) {
   if (err == null) return "Unknown error";
   if (typeof err === "string") return err;
@@ -24,7 +24,7 @@ function isSeqFilename(name) {
   return /\.(fastq|fq|fasta|fa)(\.gz)?$/i.test(name || "");
 }
 
-// Per-session threshold overrides from the FILTER payload; fall back to FILTER_DEFAULTS
+// Per-session threshold overrides from the FILTER payload, else FILTER_DEFAULTS
 function resolveParams(data) {
   return {
     deplete: data.deplete ?? FILTER_DEFAULTS.deplete,
@@ -142,7 +142,7 @@ function appendPairedOutput(out) {
 }
 
 function postProgress() {
-  // Running read counts for the live host tier; mid-stream stats() may be unsupported
+  // Running read counts for the live host tier. Mid-stream stats() may be unsupported
   let readsIn = 0;
   let readsOut = 0;
   try {
@@ -316,7 +316,7 @@ self.onmessage = async function (e) {
       index = new wasm.WasmIndex(new Uint8Array(data));
       self.postMessage({ type: MSG.INDEX_LOADED, info: index.info() });
     } catch (err) {
-      // wasm error already carries a "Failed to load index: …" prefix; surface as-is
+      // wasm error already carries a "Failed to load index: …" prefix, so surface as-is
       self.postMessage({ type: MSG.ERROR, message: errText(err) });
     }
     return;

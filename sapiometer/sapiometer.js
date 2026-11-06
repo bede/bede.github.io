@@ -1,8 +1,8 @@
 // sapiometer: in-browser human-content check
-import { MSG, DETECT_DEFAULTS } from "./protocol.js?v=6667cc5";
-import { SEQ_RE, pairSequenceFiles } from "./seq2bucket/pairing.js?v=6667cc5";
+import { MSG, DETECT_DEFAULTS } from "./protocol.js?v=bd47d2f";
+import { SEQ_RE, pairSequenceFiles } from "./pairing.js?v=bd47d2f";
 
-const ASSET_VERSION = "6667cc5";
+const ASSET_VERSION = "bd47d2f";
 
 const INDEX_URL =
   "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w61c99.pidx";
@@ -264,7 +264,7 @@ function scanPairedStreams(group, hooks) {
           onProgress = hooks.onProgress;
           worker.postMessage({
             type: MSG.FILTER,
-            data: { file1: group.file1, file2: group.file2, ...DETECT_DEFAULTS },
+            data: { file1: group.files[0], file2: group.files[1], ...DETECT_DEFAULTS },
           });
         }
       },
@@ -299,11 +299,11 @@ async function scanGroup(group, onProgressUpdate) {
     stats = s;
   };
   const hooks = { onStats, onProgress: onProgressUpdate };
-  if (group.kind === "paired") {
+  if (group.files.length === 2) {
     const { streamR1, streamR2 } = scanPairedStreams(group, hooks);
     await Promise.all([drain(streamR1), drain(streamR2)]);
   } else {
-    const stream = scanSingleStream(group.file, hooks);
+    const stream = scanSingleStream(group.files[0], hooks);
     await drain(stream);
   }
   return stats;
@@ -355,7 +355,7 @@ async function handleFiles(files) {
   const group = groups[0];
   dropZone.classList.add("loaded");
   dropSummary.textContent =
-    group.kind === "paired" ? `Pair: ${group.label}` : `Single: ${group.label}`;
+    group.files.length === 2 ? `Pair: ${group.label}` : `Single: ${group.label}`;
 
   busy = true;
   dropZone.classList.add("busy");
