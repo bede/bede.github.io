@@ -22,18 +22,18 @@
 //
 // credentialTransport: SDK multipart, streamed. A lost connection resends one part, forever.
 // linkTransport: one POST per object, streams spooled first. A retry resends the object.
-import { humanBytes } from "./format.js?v=27836d6";
-import { linkAccess, linkExpiredError } from "./link.js?v=27836d6";
-import { regionForEndpoint } from "./mint.js?v=27836d6";
-import { postObject, postObjectWithRetry, STALL_MS } from "./post.js?v=27836d6";
-import { abortable, onlineNow, retryDelayMs, retryUntilDone, sleep } from "./retry.js?v=27836d6";
+import { humanBytes } from "./format.js?v=3b89761";
+import { linkAccess, linkExpiredError } from "./link.js?v=3b89761";
+import { regionForEndpoint } from "./mint.js?v=3b89761";
+import { postObject, postObjectWithRetry, STALL_MS } from "./post.js?v=3b89761";
+import { abortable, onlineNow, retryDelayMs, retryUntilDone, sleep } from "./retry.js?v=3b89761";
 import {
   DEFAULT_SPOOL_DIR,
   spoolToFile,
   spoolName,
   releaseSpool,
   prepareSpoolStorage,
-} from "./spool.js?v=27836d6";
+} from "./spool.js?v=3b89761";
 
 const sum = (ns) => ns.reduce((a, b) => a + b, 0);
 const isBlob = (b) => typeof Blob !== "undefined" && b instanceof Blob;
@@ -219,13 +219,13 @@ export function credentialTransport({
   secretAccessKey,
   bucket,
   endpoint,
-  region = regionForEndpoint(endpoint), // Amazon S3 checks it; other stores ignore it
+  region = regionForEndpoint(endpoint), // Amazon S3 checks it, other stores ignore it
   partSize = 8 * 1024 * 1024,
   queueSize = 4, // memory stays bounded at partSize × queueSize per stream
   // Parts already go queueSize-wide and browsers allow ~6 connections per host
   concurrency = 2,
   requestTimeoutMs = STALL_MS, // per request: a part or a small object, never a whole file
-  loadSdk = () => import("../vendor/aws-sdk.js?v=27836d6"), // the token busts a cached SDK after an update
+  loadSdk = () => import("../vendor/aws-sdk.js?v=3b89761"), // the token busts a cached SDK after an update
   retryOptions = {}, // test hooks for patientRetryStrategy
 }) {
   let sdk = null;

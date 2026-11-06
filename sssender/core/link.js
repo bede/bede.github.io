@@ -53,7 +53,7 @@ export function parseMagicLink(hash) {
   try {
     payload = jsonFromBase64(raw);
   } catch (_) {
-    throw new Error("Magic link is corrupt — it may have been truncated in transit.");
+    throw new Error("Magic link is corrupt. It may have been truncated in transit.");
   }
   if (payload.v !== 1) {
     throw new Error(`Magic link version ${payload.v} is not supported by this page.`);

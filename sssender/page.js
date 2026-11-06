@@ -1,8 +1,8 @@
 // sssender: upload files as they are, via a magic link or S3 credentials, under sssender/
-import { DEFAULT_ROOT } from "./core/mint.js?v=27836d6";
-import { findOversizeFiles, rawTransform } from "./core/pipeline.js?v=27836d6";
-import { SSSENDER_VERSION, SSSENDER_COMMIT } from "./core/version.js?v=27836d6";
-import { renderFileList } from "./ui/run-view.js?v=27836d6";
+import { DEFAULT_ROOT } from "./core/mint.js?v=3b89761";
+import { findOversizeFiles, rawTransform } from "./core/pipeline.js?v=3b89761";
+import { SSSENDER_VERSION, SSSENDER_COMMIT } from "./core/version.js?v=3b89761";
+import { renderFileList } from "./ui/run-view.js?v=3b89761";
 import {
   bindCancel,
   bindSelection,
@@ -10,7 +10,7 @@ import {
   readMagicLink,
   showMode,
   uploadSelection,
-} from "./ui/upload-page.js?v=27836d6";
+} from "./ui/upload-page.js?v=3b89761";
 import {
   bindCredentialForm,
   bindUploadName,
@@ -20,11 +20,11 @@ import {
   makeStatus,
   oversizeMessage,
   setButtonDisabled,
-} from "./ui/ui.js?v=27836d6";
+} from "./ui/ui.js?v=3b89761";
 
 const APP = "sssender";
-const ROOT = DEFAULT_ROOT; // credential uploads; a link's prefix is fixed by its policy
-const CONCURRENCY = 4; // files in flight at once; the credential uploader caps itself lower
+const ROOT = DEFAULT_ROOT; // credential uploads. A link's prefix is fixed by its policy
+const CONCURRENCY = 4; // files in flight at once. The credential uploader caps itself lower
 
 const { link: LINK, linkError } = readMagicLink();
 
