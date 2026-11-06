@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sssender 📄 → 🪣</title>
+<link rel="stylesheet" href="./ui/fonts.css?v=f8e0801">
+<link rel="stylesheet" href="./ui/style.css?v=f8e0801">
+<style>
+  /* While busy (html[data-busy]) the file flies into the bucket. page.js measures --travel */
+  .mascot { display: inline-flex; align-items: center; gap: 0.3em; font-size: 24px; }
+  .mascot span { display: inline-block; }
+  .mascot .item { position: relative; z-index: 1; }
+  .mascot .bucket { position: relative; z-index: 2; }
+  .mascot .arrow { transition: opacity 0.3s; }
+  [data-busy] .mascot .arrow { opacity: 0; }
+  [data-busy] .mascot .item { animation: into-bucket 1.5s linear infinite; }
+  @keyframes into-bucket {
+    0%   { translate: -0.2em 0; opacity: 0; }
+    20%  { opacity: 1; }
+    50%  { opacity: 1; scale: 1; }
+    64%, 100% { translate: calc(var(--travel, 2.3em) * 0.8) 0; scale: 0.6; opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-busy] .mascot .item { animation: none; }
+  }
+</style>
+</head>
+<body>
+<h1>sssender&nbsp; <span class="mascot" id="mascot" aria-hidden="true"><span class="item">📄</span><span class="arrow">→</span><span class="bucket">🪣</span></span></h1>
+<p class="subtitle">Upload files to a timestamped prefix inside a chosen S3 bucket. Nested directory structures are preserved.</p>
+<div class="section-head unnumbered">Usage</div>
+<div class="usage">
+  <ol id="usage-link" hidden>
+    <li>Drag &amp; drop the files you wish to upload, or a directory containing them.</li>
+    <li>Choose a name and press 'Upload'.</li>
+  </ol>
+  <ol id="usage-creds">
+    <li>Enter S3-compatible object storage credentials.</li>
+    <li>Drag &amp; drop the files you wish to upload, or a directory containing them.</li>
+    <li>Choose a name and press 'Upload'.</li>
+  </ol>
+</div>
+
+<div class="section-head zero">Destination</div>
+<div class="link-banner" id="link-banner" hidden></div>
+<div id="creds">
+  <div class="section-head zero">Destination</div>
+  <div class="field-row">
+    <div class="field">
+      <label for="server">Server address</label>
+      <input type="text" id="server" name="server" autocomplete="on" spellcheck="false" placeholder="S3 endpoint URL" value="https://">
+    </div>
+    <div class="field">
+      <label for="bucket">Bucket</label>
+      <input type="text" id="bucket" name="bucket" autocomplete="on" spellcheck="false" placeholder="S3 bucket">
+    </div>
+  </div>
+
+  <div class="field-row">
+    <div class="field">
+      <label for="access-key">Access key ID</label>
+      <input type="text" id="access-key" name="access-key-id" autocomplete="on" spellcheck="false" placeholder="S3 access key ID">
+    </div>
+    <div class="field">
+      <label for="secret-key">Secret access key</label>
+      <input type="password" id="secret-key" autocomplete="off" spellcheck="false" placeholder="S3 secret access key">
+    </div>
+  </div>
+</div>
+
+<div class="section-head">Files</div>
+
+<div class="drop-zone" id="dir-zone">
+  <input type="file" id="dir-input" multiple>
+  <div class="summary" id="dir-summary"></div>
+  <div class="label">Click to select files, or drop files or a directory here.</div>
+</div>
+<div class="type-toggles" id="type-toggles" role="group" aria-label="File types to upload" hidden></div>
+
+<div class="section-head">Upload name (optional)</div>
+
+<div class="field">
+  <div class="name-input">
+    <span class="name-prefix" id="name-prefix"></span>
+    <input type="text" id="run-name" aria-label="Upload name" autocomplete="off" spellcheck="false" placeholder="name">
+  </div>
+</div>
+
+<div class="actions">
+  <button id="upload-btn" disabled>Upload</button>
+  <button id="reset-btn" type="button">Reset</button>
+  <button id="cancel-btn" type="button" class="secondary" hidden>Cancel</button>
+</div>
+
+<div class="progress-wrap" id="progress-wrap" style="display:none">
+  <progress id="run-progress" value="0" max="100"></progress>
+  <div class="progress-label" id="run-label"></div>
+</div>
+<ul id="file-list" style="display:none"></ul>
+
+<div id="status"></div>
+
+<dialog id="confirm-dialog" aria-labelledby="confirm-title">
+  <form method="dialog">
+    <h2 id="confirm-title">Confirm upload</h2>
+    <p><span id="confirm-count"></span> will be uploaded to <span id="confirm-dest" class="mono"></span></p>
+    <div class="actions">
+      <button value="upload" id="confirm-upload">Upload</button>
+      <button value="cancel" class="secondary" autofocus>Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<p class="info footer-links" id="mint-entry"><a href="./mint.html">mint magic link</a></p>
+
+<script type="module" src="./page.js?v=f8e0801"></script>
+</body>
+</html>
