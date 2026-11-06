@@ -22,18 +22,18 @@
 //
 // credentialTransport: SDK multipart, streamed. A lost connection resends one part, forever.
 // linkTransport: one POST per object, streams spooled first. A retry resends the object.
-import { humanBytes } from "./format.js?v=f8e0801";
-import { linkAccess, linkExpiredError } from "./link.js?v=f8e0801";
-import { regionForEndpoint } from "./mint.js?v=f8e0801";
-import { postObject, postObjectWithRetry, STALL_MS } from "./post.js?v=f8e0801";
-import { abortable, onlineNow, retryDelayMs, retryUntilDone, sleep } from "./retry.js?v=f8e0801";
+import { humanBytes } from "./format.js?v=f549632";
+import { linkAccess, linkExpiredError } from "./link.js?v=f549632";
+import { regionForEndpoint } from "./mint.js?v=f549632";
+import { postObject, postObjectWithRetry, STALL_MS } from "./post.js?v=f549632";
+import { abortable, onlineNow, retryDelayMs, retryUntilDone, sleep } from "./retry.js?v=f549632";
 import {
   DEFAULT_SPOOL_DIR,
   spoolToFile,
   spoolName,
   releaseSpool,
   prepareSpoolStorage,
-} from "./spool.js?v=f8e0801";
+} from "./spool.js?v=f549632";
 
 const sum = (ns) => ns.reduce((a, b) => a + b, 0);
 const isBlob = (b) => typeof Blob !== "undefined" && b instanceof Blob;
@@ -225,7 +225,7 @@ export function credentialTransport({
   // Parts already go queueSize-wide and browsers allow ~6 connections per host
   concurrency = 2,
   requestTimeoutMs = STALL_MS, // per request: a part or a small object, never a whole file
-  loadSdk = () => import("../vendor/aws-sdk.js?v=f8e0801"), // the token busts a cached SDK after an update
+  loadSdk = () => import("../vendor/aws-sdk.js?v=f549632"), // the token busts a cached SDK after an update
   retryOptions = {}, // test hooks for patientRetryStrategy
 }) {
   let sdk = null;
