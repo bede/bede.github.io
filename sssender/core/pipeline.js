@@ -14,8 +14,8 @@
 //                          hooks.onProgress(msg) and hooks.onStats(stats, elapsed)
 //   extras(item, result)?  -> [{ key, body, contentType }], uploaded after the group
 //   concurrency?           max groups at once (default: unlimited)
-import { relativePath } from "./select.js?v=f549632";
-import { SSSENDER_VERSION, SSSENDER_COMMIT, LAYOUT_VERSION } from "./version.js?v=f549632";
+import { relativePath } from "./select.js?v=27836d6";
+import { SSSENDER_VERSION, SSSENDER_COMMIT, LAYOUT_VERSION } from "./version.js?v=27836d6";
 
 export const groupFiles = (group) => group.files;
 

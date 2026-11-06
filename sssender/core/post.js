@@ -1,8 +1,8 @@
 // Magic-link transport: POST Object with retry, and idle (never total-duration)
 // timeouts. A POST is single-shot: no multipart, 5 GB per object, body sent in one
 // request, and a retry re-sends from byte 0.
-import { linkExpiredError } from "./link.js?v=f549632";
-import { retryUntilDone } from "./retry.js?v=f549632";
+import { linkExpiredError } from "./link.js?v=27836d6";
+import { retryUntilDone } from "./retry.js?v=27836d6";
 
 // Idle timeouts, never total-duration ones: a multi-GB POST over a bad link runs for
 // hours, and a retry re-sends from byte 0, so a false positive costs the whole object.

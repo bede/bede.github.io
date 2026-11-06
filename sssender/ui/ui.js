@@ -1,11 +1,11 @@
 // Page plumbing for apps on sssender: formatting, file picking, credential form,
 // link banner, upload name and errors. Run progress is in run-view.js, type toggles in types.js
-import { describeExpiry } from "../core/link.js?v=f549632";
-import { makeCredentialUploader, normaliseEndpoint } from "../core/uploaders.js?v=f549632";
+import { describeExpiry } from "../core/link.js?v=27836d6";
+import { makeCredentialUploader, normaliseEndpoint } from "../core/uploaders.js?v=27836d6";
 
 // --- Formatting --------------------------------------------------------------
-export { humanBytes, humanDate, plural } from "../core/format.js?v=f549632";
-import { humanBytes, humanDate, plural } from "../core/format.js?v=f549632";
+export { humanBytes, humanDate, plural } from "../core/format.js?v=27836d6";
+import { humanBytes, humanDate, plural } from "../core/format.js?v=27836d6";
 
 function timestampPrefix() {
   // Key-safe ISO 8601 (Zulu), no ms or colons
