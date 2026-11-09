@@ -1,6 +1,6 @@
 // Run progress: the file list, and a view on runUpload's hooks driving the bar, its
 // label and a row per group, several in flight at once
-import { humanBytes } from "./ui.js?v=bd47d2f";
+import { humanBytes } from "./ui.js?v=6684013";
 
 export function renderFileList(listEl, groups) {
   listEl.innerHTML = "";

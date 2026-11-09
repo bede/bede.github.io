@@ -1,11 +1,11 @@
 // Deacon filtering for updeacon: drives worker.js (WASM) off the main thread and
 // exposes it as an sssender transform. Filter params are FILTER_DEFAULTS
 // (deplete mode, panhuman thresholds).
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=bd47d2f";
-import { relativePath } from "./sssender/core/select.js?v=bd47d2f";
-import { VERSION } from "./version.js?v=bd47d2f";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=6684013";
+import { relativePath } from "./sssender/core/select.js?v=6684013";
+import { VERSION } from "./version.js?v=6684013";
 
-const ASSET_VERSION = "bd47d2f";
+const ASSET_VERSION = "6684013";
 
 // Filtered output is always gzip, so uncompressed inputs get a .gz suffix to keep the name honest
 const GZ_RE = /\.gz$/i;

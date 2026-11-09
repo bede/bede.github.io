@@ -1,12 +1,12 @@
 // updeacon-s3: filter fa/fq with Deacon in the browser, then upload via sssender
-import { DEACON_VERSION } from "./protocol.js?v=bd47d2f";
-import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=bd47d2f";
-import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=bd47d2f";
-import { VERSION, BUILD_COMMIT } from "./version.js?v=bd47d2f";
-import { purgeStaleSpools } from "./sssender/core/spool.js?v=bd47d2f";
-import { findOversizeFiles } from "./sssender/core/pipeline.js?v=bd47d2f";
-import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=bd47d2f";
-import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=bd47d2f";
+import { DEACON_VERSION } from "./protocol.js?v=6684013";
+import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=6684013";
+import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=6684013";
+import { VERSION, BUILD_COMMIT } from "./version.js?v=6684013";
+import { purgeStaleSpools } from "./sssender/core/spool.js?v=6684013";
+import { findOversizeFiles } from "./sssender/core/pipeline.js?v=6684013";
+import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=6684013";
+import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=6684013";
 import {
   bindCredentialForm,
   bindUploadName,
@@ -16,7 +16,7 @@ import {
   oversizeMessage,
   setButtonDisabled,
   summariseSelection,
-} from "./sssender/ui/ui.js?v=bd47d2f";
+} from "./sssender/ui/ui.js?v=6684013";
 
 // --- Fixed configuration -----------------------------------------------------
 const APP = "updeacon";
