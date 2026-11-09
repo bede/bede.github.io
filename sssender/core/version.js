@@ -2,7 +2,7 @@
 export const SSSENDER_VERSION = "0.6.0";
 
 // Stamped with the source commit by deploy.sh or an app's vendoring script
-export const SSSENDER_COMMIT = "4a92f98";
+export const SSSENDER_COMMIT = "785d500";
 
 // Bucket layout written by runUpload
 export const LAYOUT_VERSION = 1;
