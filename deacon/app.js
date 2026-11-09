@@ -1,7 +1,7 @@
-import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=484a243-dirty-20261105133942";
-import { SEQ_RE, describeGroups, pairSequenceFiles } from "./pairing.js?v=484a243-dirty-20261105133942";
+import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=9af9988";
+import { SEQ_RE, describeGroups, pairSequenceFiles } from "./pairing.js?v=9af9988";
 
-const ASSET_VERSION = "484a243-dirty-20261105133942";
+const ASSET_VERSION = "9af9988";
 
 const MAX_INDEX_BYTES = 2 * 1024 * 1024 * 1024;
 
