@@ -4,14 +4,14 @@
 //   selection  dir-zone, dir-input, dir-summary, type-toggles
 //   run        progress-wrap, run-progress, run-label
 // Pages keep readiness, buttons and transform.
-import { humanBytes, plural } from "../core/format.js?v=4ea40cd";
-import { parseMagicLink } from "../core/link.js?v=4ea40cd";
-import { runUpload } from "../core/pipeline.js?v=4ea40cd";
-import { selectFiles } from "../core/select.js?v=4ea40cd";
-import { makeLinkUploader } from "../core/uploaders.js?v=4ea40cd";
-import { makeRunView } from "./run-view.js?v=4ea40cd";
-import { renderTypeToggles } from "./types.js?v=4ea40cd";
-import { bindFilePicker, formatError, renderLinkBanner, renderLinkError, summariseSelection } from "./ui.js?v=4ea40cd";
+import { humanBytes, plural } from "../core/format.js?v=4a92f98";
+import { parseMagicLink } from "../core/link.js?v=4a92f98";
+import { runUpload } from "../core/pipeline.js?v=4a92f98";
+import { selectFiles } from "../core/select.js?v=4a92f98";
+import { makeLinkUploader } from "../core/uploaders.js?v=4a92f98";
+import { makeRunView } from "./run-view.js?v=4a92f98";
+import { renderTypeToggles } from "./types.js?v=4a92f98";
+import { bindFilePicker, formatError, renderLinkBanner, renderLinkError, summariseSelection } from "./ui.js?v=4a92f98";
 
 const $ = (id) => document.getElementById(id);
 
