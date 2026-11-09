@@ -1,9 +1,9 @@
-import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=ee2fb4e";
+import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=c0c6c58";
 
 // Off-main-thread Deacon filtering, pull-driven (one batch per MSG.PULL) so memory stays bounded
 let wasm = null;
 let index = null;
-const ASSET_VERSION = "ee2fb4e";
+const ASSET_VERSION = "c0c6c58";
 const OUTPUT_BATCH_BYTES = 4 * 1024 * 1024; // 4 MiB
 
 // wasm-bindgen throws Result errors as plain strings with no .message. Normalise so the reason survives

@@ -1,8 +1,8 @@
 // Mint page for any app on sssender. <body data-root="app/"> names the app's upload
 // root (required). The link opens the app in this directory
-import { checkRoot, mintMagicLink } from "../core/mint.js?v=ee2fb4e";
-import { normaliseEndpoint } from "../core/uploaders.js?v=ee2fb4e";
-import { humanBytes, humanDate } from "./ui.js?v=ee2fb4e";
+import { checkRoot, mintMagicLink } from "../core/mint.js?v=c0c6c58";
+import { normaliseEndpoint } from "../core/uploaders.js?v=c0c6c58";
+import { humanBytes, humanDate } from "./ui.js?v=c0c6c58";
 
 const $ = (id) => document.getElementById(id);
 const root = checkRoot(document.body.dataset.root);
