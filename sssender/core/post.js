@@ -1,21 +1,16 @@
-// Magic-link transport: POST Object with retry, and idle (never total-duration)
-// timeouts. A POST is single-shot: no multipart, 5 GB per object, body sent in one
-// request, and a retry re-sends from byte 0.
-import { linkExpiredError } from "./link.js?v=5ebe50b";
-import { retryUntilDone } from "./retry.js?v=5ebe50b";
+// Magic-link transport: every POST uses XHR, with progress-driven sending and a
+// bounded response wait. A retry re-sends the whole object from byte 0
+import { linkExpiredError } from "./link.js?v=add5a5d";
+import { abortable, retryUntilDone } from "./retry.js?v=add5a5d";
 
-// Idle timeouts, never total-duration ones: a multi-GB POST over a bad link runs for
-// hours, and a retry re-sends from byte 0, so a false positive costs the whole object.
-// Abort only on prolonged silence.
-export const STALL_MS = 15 * 60 * 1000; // no upload progress at all
-export const RESPONSE_MS = 30 * 60 * 1000; // body sent, awaiting the store's commit
-export const SMALL_MS = 5 * 60 * 1000; // small bodies, request + response
+// A progressing upload has no duration limit. After its body is sent, allow time
+// for the store/proxy to finish and return the complete response
+export const STALL_MS = 2 * 60 * 1000; // no upload progress at all
+export const RESPONSE_MS = 5 * 60 * 1000; // body sent, awaiting the store's commit
 
 function s3Error(xhr) {
-  return s3ErrorFromText(xhr.status, xhr.statusText, xhr.responseText || "");
-}
-
-function s3ErrorFromText(status, statusText, text) {
+  const { status, statusText } = xhr;
+  const text = xhr.responseText || "";
   let code = "";
   let message = "";
   try {
@@ -62,63 +57,8 @@ function postForm({ link, key, body, contentType = "application/octet-stream" })
   return form;
 }
 
-async function postObjectFetch({
-  link,
-  key,
-  body,
-  contentType = "application/octet-stream",
-  signal,
-  setTimerFn = setTimeout,
-  clearTimerFn = clearTimeout,
-}) {
-  signal?.throwIfAborted();
-  let resp;
-  let errorBody = "";
-  let offlineErr = null;
-  let timeoutErr = null;
-  let timer = null;
-  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const removeOffline = ctrl
-    ? withOfflineAbort((err) => {
-        offlineErr = err;
-        ctrl.abort();
-      })
-    : () => {};
-  if (ctrl) {
-    // Small bodies only, so one bound covers sending and the response
-    timer = setTimerFn(() => {
-      timeoutErr = uploadTransportError("Upload timed out.");
-      ctrl.abort();
-    }, SMALL_MS);
-  }
-  const onAbort = () => ctrl?.abort();
-  signal?.addEventListener("abort", onAbort, { once: true });
-  try {
-    resp = await fetch(`${link.endpoint}/${link.bucket}`, {
-      method: "POST",
-      body: postForm({ link, key, body, contentType }),
-      credentials: "omit",
-      cache: "no-store",
-      ...(ctrl && { signal: ctrl.signal }),
-    });
-    // fetch() resolves when response headers arrive. Keep the abort timer alive
-    // while an error body is consumed, or a half-delivered XML error can hang.
-    if (!resp.ok) errorBody = await resp.text();
-  } catch (_) {
-    // Whichever cause triggered the abort wins, offline being the more specific
-    if (signal?.aborted) throw signal.reason;
-    throw offlineErr || timeoutErr || uploadTransportError();
-  } finally {
-    if (timer !== null) clearTimerFn(timer);
-    removeOffline();
-    signal?.removeEventListener("abort", onAbort);
-  }
-  if (resp.ok) return;
-  throw s3ErrorFromText(resp.status, resp.statusText, errorBody);
-}
-
-// XHR is only for progress. It forces a CORS preflight.
-function postObjectXhr({
+// Progress listeners require CORS preflight, including for control objects
+export function postObject({
   link,
   key,
   body,
@@ -183,7 +123,6 @@ function postObjectXhr({
         lastLoaded = e.loaded;
         armStall();
       }
-      // fetch() can't report upload progress
       if (onProgress) onProgress(e.loaded, e.total);
     };
     xhr.upload.onloadend = () => {
@@ -211,11 +150,6 @@ function postObjectXhr({
   });
 }
 
-export function postObject(args) {
-  if (!args.onProgress && typeof fetch === "function") return postObjectFetch(args);
-  return postObjectXhr(args);
-}
-
 export function isRetryableUploadError(err) {
   if (!err) return false;
   if (err.kind === "network") return true;
@@ -226,17 +160,30 @@ export function isRetryableUploadError(err) {
 }
 
 // A file moved, changed or deleted since it was picked fails like a dropped
-// connection and would retry forever. Reading one byte tells them apart
-export async function checkReadable(body) {
+// connection and would retry forever. Reading one byte tells them apart. The read
+// itself can hang (a network share, sleeping disk or cloud folder), hence READ_CHECK_MS
+export const READ_CHECK_MS = 5 * 60 * 1000;
+
+export async function checkReadable(
+  body,
+  { signal, timeoutMs = READ_CHECK_MS, setTimerFn = setTimeout, clearTimerFn = clearTimeout } = {}
+) {
+  signal?.throwIfAborted();
   if (typeof Blob === "undefined" || !(body instanceof Blob)) return;
-  try {
-    await body.slice(0, 1).arrayBuffer();
-  } catch (cause) {
-    const err = new Error("The file can no longer be read: it was moved, changed or deleted after it was selected.", {
-      cause,
-    });
+  const unreadable = (message, cause) => {
+    const err = new Error(message, cause ? { cause } : undefined);
     err.kind = "input";
-    throw err;
+    return err;
+  };
+  try {
+    await abortable(body.slice(0, 1).arrayBuffer(), signal, {
+      timeoutMs, setTimerFn, clearTimerFn,
+      expired: () => unreadable("The file stopped responding: the disk, network share or cloud folder it is on may be unavailable."),
+    });
+  } catch (cause) {
+    if (signal?.aborted) throw signal.reason;
+    if (cause?.kind === "input") throw cause;
+    throw unreadable("The file can no longer be read: it was moved, changed or deleted after it was selected.", cause);
   }
 }
 
@@ -256,9 +203,13 @@ export function postObjectWithRetry({
     signal: args.signal,
     deadline: args.link.expiresAt,
     expired: () => linkExpiredError(args.link.expiresAt, nowFn()),
-    beforeRetry: () => checkReadableFn(args.body),
+    beforeRetry: (_err, { signal }) => checkReadableFn(args.body, {
+      signal, setTimerFn: args.setTimerFn, clearTimerFn: args.clearTimerFn,
+    }),
     onRetry,
     nowFn,
+    setTimerFn: args.setTimerFn,
+    clearTimerFn: args.clearTimerFn,
     ...(sleepFn && { sleepFn }),
     ...(waitOnlineFn && { waitOnlineFn }),
   });

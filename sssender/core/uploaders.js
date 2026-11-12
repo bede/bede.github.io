@@ -22,18 +22,18 @@
 //
 // credentialTransport: SDK multipart, streamed. A lost connection resends one part, forever.
 // linkTransport: one POST per object, streams spooled first. A retry resends the object.
-import { humanBytes } from "./format.js?v=5ebe50b";
-import { linkAccess, linkExpiredError } from "./link.js?v=5ebe50b";
-import { regionForEndpoint } from "./mint.js?v=5ebe50b";
-import { postObject, postObjectWithRetry, STALL_MS } from "./post.js?v=5ebe50b";
-import { abortable, onlineNow, retryDelayMs, retryUntilDone, sleep } from "./retry.js?v=5ebe50b";
+import { humanBytes } from "./format.js?v=add5a5d";
+import { linkAccess, linkExpiredError } from "./link.js?v=add5a5d";
+import { regionForEndpoint } from "./mint.js?v=add5a5d";
+import { postObject, postObjectWithRetry } from "./post.js?v=add5a5d";
+import { onlineNow, retryDelayMs, retryUntilDone } from "./retry.js?v=add5a5d";
 import {
   DEFAULT_SPOOL_DIR,
   spoolToFile,
   spoolName,
   releaseSpool,
   prepareSpoolStorage,
-} from "./spool.js?v=5ebe50b";
+} from "./spool.js?v=add5a5d";
 
 const sum = (ns) => ns.reduce((a, b) => a + b, 0);
 const isBlob = (b) => typeof Blob !== "undefined" && b instanceof Blob;
@@ -73,43 +73,29 @@ function unreachableError(viaLink, cause) {
 
 async function firstContact(
   attempt,
-  { viaLink, signal, deadline, onRetry, onlineFn = onlineNow, sleepFn = sleep, nowFn = Date.now, ...waits }
+  { viaLink, signal, deadline, onRetry, onlineFn = onlineNow, nowFn = Date.now, ...waits }
 ) {
   let startedAt = 0;
-  for (let prompt = 0, n = 1; ; n++) {
-    try {
-      // Only waits out being offline, never retries the attempt
-      return await retryUntilDone(
-        () => {
-          startedAt = nowFn();
-          return attempt();
-        },
-        {
-          retryable: () => false,
-          signal,
-          deadline,
-          expired: () => linkExpiredError(deadline),
-          onRetry,
-          onlineFn,
-          sleepFn,
-          nowFn,
-          ...waits,
-        }
-      );
-    } catch (err) {
-      if (signal?.aborted) throw signal.reason;
-      if (err?.kind !== "network") throw err; // an answer from the store (refused link, bad keys…) is final
-      if (!onlineFn()) continue; // the connection went: wait for it, then try again
-      if (nowFn() - startedAt >= PROMPT_FAILURE_MS) {
-        // Slow failure: the connection. Back off and retry, as uploads do
-        onRetry?.({ attempt: n, waitingOnline: false, waitMs: retryDelayMs(n), error: err });
-        await abortable(sleepFn(retryDelayMs(n)), signal);
-        continue;
-      }
-      if (++prompt >= FIRST_CONTACT_TRIES) throw unreachableError(viaLink, err);
-      await abortable(sleepFn(FIRST_RETRY_MS), signal);
-    }
-  }
+  let prompt = 0;
+  let quick = false;
+  return retryUntilDone(() => {
+    startedAt = nowFn();
+    return attempt();
+  }, {
+    ...waits,
+    retryable: (err) => err?.kind === "network",
+    signal,
+    deadline,
+    expired: () => linkExpiredError(deadline, nowFn()),
+    onRetry,
+    onlineFn,
+    nowFn,
+    beforeRetry(err) {
+      quick = onlineFn() && nowFn() - startedAt < PROMPT_FAILURE_MS;
+      if (quick && ++prompt >= FIRST_CONTACT_TRIES) throw unreachableError(viaLink, err);
+    },
+    delayMs: (n) => quick ? FIRST_RETRY_MS : retryDelayMs(n),
+  });
 }
 
 // --- The uploader ------------------------------------------------------------
@@ -214,6 +200,65 @@ export function patientRetryStrategy({ signal, onRetry, once = false, ...waits }
   };
 }
 
+// Per HTTP attempt, including browser queueing, not an idle timeout
+export const PART_TIMEOUT_MS = 15 * 60 * 1000;
+
+// The bundled handler's timer rejects without aborting fetch, and lib-storage
+// doesn't pass its abort signal to client.send. Own both at the HTTP boundary
+export function withRequestTimeout(
+  handler,
+  { signal, timeoutMs = PART_TIMEOUT_MS, setTimerFn = setTimeout, clearTimerFn = clearTimeout } = {}
+) {
+  return {
+    get metadata() {
+      return handler.metadata;
+    },
+    updateHttpClientConfig: (...args) => handler.updateHttpClientConfig?.(...args),
+    httpHandlerConfigs: () => handler.httpHandlerConfigs?.(),
+    destroy: () => handler.destroy?.(),
+    async handle(request, options = {}) {
+      // Run Cancel takes precedence over an SDK abort or timeout
+      const signals = [...new Set([signal, options.abortSignal].filter(Boolean))];
+      const cancelled = () => signals.find((s) => s.aborted);
+      const already = cancelled();
+      if (already) throw already.reason;
+      const ctrl = new AbortController();
+      const onAbort = () => ctrl.abort(cancelled().reason);
+      let timer = null;
+      let timeoutError = null;
+      try {
+        for (const s of signals) s.addEventListener("abort", onAbort, { once: true });
+        if (timeoutMs > 0) {
+          timer = setTimerFn(() => {
+            timeoutError = new Error(`Request did not complete within ${timeoutMs} ms`);
+            timeoutError.name = "TimeoutError";
+            ctrl.abort(timeoutError);
+          }, timeoutMs);
+        }
+        const response = await handler.handle(request, {
+          ...options,
+          abortSignal: ctrl.signal,
+          requestTimeout: 0, // disable the SDK's non-aborting timer, including per-send overrides
+        });
+        // Upload replies are small XML/control bodies. Consume them before cleanup
+        // so a stalled response body still yields to the deadline and Cancel
+        if (response.response?.body) {
+          response.response.body = await new Response(response.response.body).blob();
+        }
+        if (ctrl.signal.aborted) throw ctrl.signal.reason;
+        return response;
+      } catch (err) {
+        const aborted = cancelled();
+        if (aborted) throw aborted.reason;
+        throw timeoutError ?? err;
+      } finally {
+        if (timer !== null) clearTimerFn(timer);
+        for (const s of signals) s.removeEventListener("abort", onAbort);
+      }
+    },
+  };
+}
+
 export function credentialTransport({
   accessKeyId,
   secretAccessKey,
@@ -221,11 +266,13 @@ export function credentialTransport({
   endpoint,
   region = regionForEndpoint(endpoint), // Amazon S3 checks it, other stores ignore it
   partSize = 8 * 1024 * 1024,
-  queueSize = 4, // memory stays bounded at partSize × queueSize per stream
-  // Parts already go queueSize-wide and browsers allow ~6 connections per host
+  queueSize = 2, // memory stays bounded at partSize × queueSize per stream
+  // Two files (or one paired group) send up to four parts at once
   concurrency = 2,
-  requestTimeoutMs = STALL_MS, // per request: a part or a small object, never a whole file
-  loadSdk = () => import("../vendor/aws-sdk.js?v=5ebe50b"), // the token busts a cached SDK after an update
+  requestTimeoutMs = PART_TIMEOUT_MS, // per request: a part or a small object, never a whole file
+  setTimerFn = setTimeout,
+  clearTimerFn = clearTimeout,
+  loadSdk = () => import("../vendor/aws-sdk.js?v=add5a5d"), // the token busts a cached SDK after an update
   retryOptions = {}, // test hooks for patientRetryStrategy
 }) {
   let sdk = null;
@@ -244,8 +291,13 @@ export function credentialTransport({
         region,
         forcePathStyle: true,
         credentials: { accessKeyId, secretAccessKey },
-        requestHandler: { requestTimeout: requestTimeoutMs },
         retryStrategy: patientRetryStrategy({ signal, onRetry, once, ...retryOptions }),
+      });
+      client.config.requestHandler = withRequestTimeout(client.config.requestHandler, {
+        signal,
+        timeoutMs: requestTimeoutMs,
+        setTimerFn,
+        clearTimerFn,
       });
       const up = new sdk.Upload({
         client,
@@ -300,8 +352,7 @@ export function linkTransport({
     },
     put: (key, body, { contentType, signal, onProgress, onRetry, once = false } = {}) =>
       once
-        ? // With progress, as uploads are: XHR, so the browser checks CORS as it will for them
-          postOnceFn({ link, key, body, contentType, signal, onProgress: onProgress ?? (() => {}) })
+        ? postOnceFn({ link, key, body, contentType, signal, onProgress })
         : postWithRetryFn({ link, key, body, contentType, signal, onProgress, onRetry }),
     // POST needs the whole body: Blobs as they are, streams spooled to files
     async prepare(item, outputs, signal) {

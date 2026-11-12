@@ -66,13 +66,16 @@ export function spoolName(n, part = "") {
 // POST needs the whole body up front, so spool to OPFS to bound memory. `signal`
 // stops the copy and cancels the stream.
 export async function spoolToFile(stream, name, { expectedBytes = 0, dir = DEFAULT_SPOOL_DIR, signal } = {}) {
+  signal?.throwIfAborted();
   if (!spoolSupported()) {
     if (expectedBytes > MEMORY_SPOOL_MAX_BYTES) {
       throw spoolStorageError(
         "This browser cannot use private file storage for a large magic-link upload."
       );
     }
-    return new Response(stream).blob(); // bounded fallback for older browsers
+    const chunks = [];
+    await stream.pipeTo(new WritableStream({ write: (chunk) => { chunks.push(chunk); } }), signal ? { signal } : {});
+    return new Blob(chunks); // bounded fallback for older browsers
   }
   try {
     const handle = await (await spoolDir(dir)).getFileHandle(name, { create: true });

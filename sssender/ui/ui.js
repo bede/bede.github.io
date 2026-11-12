@@ -1,11 +1,11 @@
 // Page plumbing for apps on sssender: formatting, file picking, credential form,
 // link banner, upload name and errors. Run progress is in run-view.js, type toggles in types.js
-import { describeExpiry } from "../core/link.js?v=5ebe50b";
-import { makeCredentialUploader, normaliseEndpoint } from "../core/uploaders.js?v=5ebe50b";
+import { describeExpiry } from "../core/link.js?v=add5a5d";
+import { makeCredentialUploader, normaliseEndpoint } from "../core/uploaders.js?v=add5a5d";
 
 // --- Formatting --------------------------------------------------------------
-export { humanBytes, humanDate, plural } from "../core/format.js?v=5ebe50b";
-import { humanBytes, humanDate, plural } from "../core/format.js?v=5ebe50b";
+export { humanBytes, humanDate, plural } from "../core/format.js?v=add5a5d";
+import { humanBytes, humanDate, plural } from "../core/format.js?v=add5a5d";
 
 function timestampPrefix() {
   // Key-safe ISO 8601 (Zulu), no ms or colons
@@ -31,12 +31,17 @@ export function setButtonDisabled(btn, disabled) {
 
 // --- File selection ----------------------------------------------------------
 // Click to pick, or drop files or directories. onFiles gets File[] with
-// webkitRelativePath stamped on dropped entries, as the picker does
-export function bindFilePicker({ zone, input, isBusy, onFiles }) {
+// webkitRelativePath stamped on dropped entries, as the picker does.
+// anywhere: the whole window takes the drop, for pages with nothing else to drop on
+export function bindFilePicker({ zone, input, isBusy, onFiles, anywhere = false }) {
   zone.addEventListener("click", () => {
     if (!isBusy()) input.click();
   });
   input.addEventListener("change", () => onFiles(Array.from(input.files)));
+  if (anywhere) {
+    bindPageDrop({ zone, isBusy, onFiles });
+    return;
+  }
   zone.addEventListener("dragover", (e) => {
     e.preventDefault();
     if (!isBusy()) zone.classList.add("dragover");
@@ -46,12 +51,62 @@ export function bindFilePicker({ zone, input, isBusy, onFiles }) {
     e.preventDefault();
     zone.classList.remove("dragover");
     if (isBusy()) return;
-    const entries = Array.from(e.dataTransfer.items)
-      .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
-      .filter(Boolean);
-    onFiles(entries.length ? await collectEntries(entries) : Array.from(e.dataTransfer.files || []));
+    onFiles(await droppedFiles(e.dataTransfer));
   });
 }
+
+// Dragged files raise a full-window overlay whose label ignores the pointer, so its
+// dragleave means the drag left the window. Drops are refused while busy or a modal
+// is open, and never fall through to the browser opening the file.
+function bindPageDrop({ zone, isBusy, onFiles }) {
+  const overlay = document.createElement("div");
+  overlay.className = "page-drop";
+  overlay.hidden = true;
+  const label = document.createElement("div");
+  label.className = "page-drop-label";
+  label.textContent = "Drop files or a directory to select them";
+  overlay.append(label);
+  document.body.append(overlay);
+  const blocked = () => isBusy() || !!document.querySelector(":modal");
+  const show = (on) => {
+    overlay.hidden = !on;
+    zone.classList.toggle("dragover", on);
+  };
+
+  addEventListener("dragenter", (e) => {
+    if (carriesFiles(e) && !blocked()) show(true);
+  });
+  // Outside the overlay, whose handlers stop propagation
+  addEventListener("dragover", (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "none";
+  });
+  addEventListener("drop", (e) => {
+    if (carriesFiles(e)) e.preventDefault();
+  });
+  overlay.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  });
+  overlay.addEventListener("dragleave", () => show(false));
+  overlay.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    show(false);
+    if (!blocked()) onFiles(await droppedFiles(e.dataTransfer));
+  });
+}
+
+async function droppedFiles(dataTransfer) {
+  const entries = Array.from(dataTransfer.items)
+    .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
+    .filter(Boolean);
+  return entries.length ? await collectEntries(entries) : Array.from(dataTransfer.files || []);
+}
+
+const carriesFiles = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
 
 async function collectEntries(entries, prefix = "") {
   const out = [];
@@ -91,7 +146,7 @@ function readAllEntries(reader) {
   });
 }
 
-// One line for a selectFiles() result: "12 files selected (3.4GB total), …".
+// One line for a selectFiles() result: "12 files selected (3.4GB), …".
 // noun is "file" or "sequence file". details(sel) adds counts, e.g. ["2 pairs"]
 export function summariseSelection(sel, { noun = "file", details = () => [] } = {}) {
   const skipped = [
@@ -103,7 +158,7 @@ export function summariseSelection(sel, { noun = "file", details = () => [] } = 
     return [none, ...skipped].filter(Boolean).join(", ");
   }
   if (sel.error) return "Grouping error";
-  const total = `${humanBytes(sel.totalBytes)} total`;
+  const total = humanBytes(sel.totalBytes);
   const head = `${plural(sel.selected.length, noun)} selected (${[...details(sel), total].join(", ")})`;
   return [head, ...skipped].join(", ");
 }
@@ -137,17 +192,59 @@ export function bindCredentialForm({ server, bucket, accessKey, secretKey, onInp
   };
 }
 
+// --- Staying awake ---------------------------------------------------------------
+// While a run is going: a screen wake lock, so an idle machine doesn't sleep and drop
+// the connections (a closed lid still does), and a warning before the page is closed.
+// The browser drops the lock while the page is hidden, so it is retaken on return
+export function holdAwake({ doc = globalThis.document, nav = globalThis.navigator, win = globalThis } = {}) {
+  let held = true;
+  let lock = null;
+  const holding = () => lock && !lock.released;
+  const request = async () => {
+    if (!held || holding() || !nav?.wakeLock || doc?.visibilityState !== "visible") return;
+    try {
+      const next = await nav.wakeLock.request("screen");
+      // A visibility change may have started another request while this one waited
+      if (!held || holding()) {
+        await next.release().catch(() => {});
+        return;
+      }
+      lock = next;
+    } catch (_) {
+      // Refused (no secure context, battery saver…): uploads carry on regardless
+    }
+  };
+  const onBeforeUnload = (e) => {
+    e.preventDefault();
+    e.returnValue = ""; // older browsers
+  };
+  doc?.addEventListener?.("visibilitychange", request);
+  win?.addEventListener?.("beforeunload", onBeforeUnload);
+  request();
+  return () => {
+    held = false;
+    doc?.removeEventListener?.("visibilitychange", request);
+    win?.removeEventListener?.("beforeunload", onBeforeUnload);
+    lock?.release().catch(() => {});
+    lock = null;
+  };
+}
+
 // --- Busy indicator ----------------------------------------------------------
 // <html data-busy> while a run is going (pages animate as they like), and the
 // percentage in the tab title. finish() leaves "100% · title" until stop(), so a
-// background tab shows it's done. stop() restores the title.
+// background tab shows it's done. stop() restores the title. Holds the page awake
+// (holdAwake) from start() to finish() or stop().
 export function makeBusyIndicator({ progress }) {
   const pageTitle = document.title;
   const root = document.documentElement;
   let timer = null;
+  let release = null;
   const halt = () => {
     clearInterval(timer);
     timer = null;
+    release?.();
+    release = null;
   };
   const showPct = () => {
     const pct = Math.min(Math.floor(progress.value || 0), 100);
@@ -159,10 +256,12 @@ export function makeBusyIndicator({ progress }) {
       halt();
       root.dataset.busy = "";
       progress.value = 0; // a previous run leaves it at 100
+      release = holdAwake();
       const tick = () => {
         if (showPct() >= 100) {
           delete root.dataset.busy;
-          halt();
+          clearInterval(timer);
+          timer = null;
         }
       };
       timer = setInterval(tick, 500);
@@ -179,6 +278,28 @@ export function makeBusyIndicator({ progress }) {
       document.title = pageTitle;
     },
   };
+}
+
+// --- Done dialog ---------------------------------------------------------------
+// The confirmation dialog's twin, shown when a run finishes. skipped: [{ label, reason }]
+export function showDoneDialog(dialog, { count, dest, skipped = [], skippedCount = "" }) {
+  const $in = (id) => dialog.querySelector(`#${id}`);
+  $in("done-title").textContent = skipped.length ? "Upload finished, with files skipped" : "Upload complete";
+  $in("done-count").textContent = count;
+  $in("done-dest").textContent = dest;
+  $in("done-skipped").hidden = !skipped.length;
+  $in("done-skipped-count").textContent = skippedCount;
+  $in("done-skipped-list").replaceChildren(
+    ...skipped.map(({ label, reason }) => {
+      const li = document.createElement("li");
+      const why = document.createElement("span");
+      why.className = "reason";
+      why.textContent = reason;
+      li.append(label, why);
+      return li;
+    })
+  );
+  dialog.showModal();
 }
 
 // --- Confirmation dialog -----------------------------------------------------

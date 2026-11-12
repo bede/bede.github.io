@@ -14,8 +14,8 @@
 //                          hooks.onProgress(msg) and hooks.onStats(stats, elapsed)
 //   extras(item, result)?  -> [{ key, body, contentType }], uploaded after the group
 //   concurrency?           max groups at once (default: unlimited)
-import { relativePath } from "./select.js?v=5ebe50b";
-import { SSSENDER_VERSION, SSSENDER_COMMIT, LAYOUT_VERSION } from "./version.js?v=5ebe50b";
+import { relativePath } from "./select.js?v=add5a5d";
+import { SSSENDER_VERSION, SSSENDER_COMMIT, LAYOUT_VERSION } from "./version.js?v=add5a5d";
 
 export const groupFiles = (group) => group.files;
 
@@ -120,57 +120,75 @@ export async function runUpload({
     Math.min(concurrency, transform.concurrency ?? Infinity, uploader.concurrency ?? Infinity, items.length)
   );
   const ctrl = new AbortController();
-  const stop = () => ctrl.abort(signal.reason);
-  signal?.addEventListener("abort", stop, { once: true });
-
-  const runGroup = async (i, groupSignal) => {
-    const item = items[i];
-    hooks.onGroupStart?.(i, item);
-    const result = { stats: null, elapsed: 0 };
-    const outputs = transform.start(item, {
-      onProgress: (msg) => hooks.onTransformProgress?.(i, msg),
-      onStats: (stats, elapsed) => {
-        result.stats = stats;
-        result.elapsed = Number(elapsed) || 0;
-      },
-      signal: groupSignal,
-    });
-    const keys = [
-      ...(await uploader.uploadGroup(item, outputs, {
-        onUploadStart: (bytes) => hooks.onUploadStart?.(i, bytes),
-        onUploadProgress: (bytes) => hooks.onUploadProgress?.(i, bytes),
-        onUploadRetry: (info) => hooks.onUploadRetry?.(i, info),
-        signal: groupSignal,
-      })),
-    ];
-    for (const extra of transform.extras?.(item, result) ?? []) {
-      await uploader.putSmall(extra.key, extra.body, extra.contentType, { signal: groupSignal });
-      keys.push(extra.key);
-    }
-    hooks.onGroupDone?.(i, item, result);
-    return keys;
+  let failure = null;
+  const stopRun = (error, i) => {
+    if (failure) return;
+    if (typeof error === "object" && error.groupIndex == null) error.groupIndex = i;
+    failure = error;
+    ctrl.abort(error);
   };
+  const stop = () => ctrl.abort(signal.reason);
+  if (signal?.aborted) stop();
+  else signal?.addEventListener("abort", stop, { once: true });
 
-  const keysByGroup = []; // manifest order is group order, whatever order they finish in
-  const failed = [];
-  let failure = null; // the fatal error that stopped the run
-  let next = 0;
   // One attempt under the group's own signal: aborting it stops the group's other
-  // outputs (a pair's mate) and nothing else
-  const attemptGroup = async (i) => {
+  // outputs (a pair's mate) and their producers, before another attempt can start
+  const runGroup = async (i) => {
     const groupCtrl = new AbortController();
+    const groupSignal = groupCtrl.signal;
     const stopGroup = () => groupCtrl.abort(ctrl.signal.reason);
-    ctrl.signal.addEventListener("abort", stopGroup, { once: true });
+    if (ctrl.signal.aborted) stopGroup();
+    else ctrl.signal.addEventListener("abort", stopGroup, { once: true });
+    const drains = [];
     try {
-      return await runGroup(i, groupCtrl.signal);
+      groupSignal.throwIfAborted();
+      const item = items[i];
+      hooks.onGroupStart?.(i, item);
+      const result = { stats: null, elapsed: 0 };
+      const outputs = transform.start(item, {
+        onProgress: (msg) => hooks.onTransformProgress?.(i, msg),
+        onStats: (stats, elapsed) => {
+          result.stats = stats;
+          result.elapsed = Number(elapsed) || 0;
+        },
+        signal: groupSignal,
+      }).map((output) => {
+        if (!output.stream) return output;
+        const bridge = new TransformStream();
+        const drain = output.stream.pipeTo(bridge.writable, { signal: groupSignal });
+        drain.catch(() => {}); // handled below, even if preparation fails before reading
+        drains.push(drain);
+        return { ...output, stream: bridge.readable };
+      });
+      const keys = [
+        ...(await uploader.uploadGroup(item, outputs, {
+          onUploadStart: (bytes) => hooks.onUploadStart?.(i, bytes),
+          onUploadProgress: (bytes) => hooks.onUploadProgress?.(i, bytes),
+          onUploadRetry: (info) => hooks.onUploadRetry?.(i, info),
+          signal: groupSignal,
+        })),
+      ];
+      for (const extra of transform.extras?.(item, result) ?? []) {
+        await uploader.putSmall(extra.key, extra.body, extra.contentType, { signal: groupSignal });
+        keys.push(extra.key);
+      }
+      hooks.onGroupDone?.(i, item, result);
+      return keys;
     } catch (err) {
-      groupCtrl.abort(err);
-      throw err;
+      const error = err ?? new Error("Upload failed");
+      // Stop sibling groups immediately, even if this producer's cleanup is slow
+      if (isRunFatal(error) || signal?.aborted) stopRun(error, i);
+      groupCtrl.abort(error);
+      throw error;
     } finally {
+      await Promise.allSettled(drains);
       ctrl.signal.removeEventListener("abort", stopGroup);
     }
   };
 
+  const keysByGroup = []; // manifest order is group order, whatever order they finish in
+  const failed = [];
+  let next = 0;
   const lane = async () => {
     while (!failure && next < items.length) {
       const i = next++;
@@ -178,7 +196,7 @@ export async function runUpload({
         // err.retry (e.g. a crashed worker): one more go before it counts as failed
         for (let attempt = 1; ; attempt++) {
           try {
-            keysByGroup[i] = await attemptGroup(i);
+            keysByGroup[i] = await runGroup(i);
             break;
           } catch (err) {
             if (!err?.retry || attempt >= GROUP_ATTEMPTS || failure || isRunFatal(err)) throw err;
@@ -189,9 +207,7 @@ export async function runUpload({
         if (failure) continue; // a sibling stopped by the first fatal error
         const error = err ?? new Error("Upload failed");
         if (isRunFatal(error) || signal?.aborted) {
-          if (typeof error === "object" && error.groupIndex == null) error.groupIndex = i;
-          failure = error;
-          ctrl.abort(failure);
+          stopRun(error, i);
           continue;
         }
         failed.push({ index: i, item: items[i], error });
@@ -214,13 +230,14 @@ export async function runUpload({
       item.files.map((file) => `${relativePath(file)}\t${oneLine(error)}`)
     );
     const key = `${keyBase}/_FAILED.txt`;
-    await uploader.putSmall(key, new Blob([lines.join("\n") + "\n"], { type: "text/plain" }), "text/plain");
+    await uploader.putSmall(key, new Blob([lines.join("\n") + "\n"], { type: "text/plain" }), "text/plain", { signal });
     keys.push(key);
   }
   await uploader.putSmall(
     `${keyBase}/_MANIFEST.txt`,
     new Blob([keys.join("\n") + "\n"], { type: "text/plain" }),
-    "text/plain"
+    "text/plain",
+    { signal }
   );
   return { items, keys, failed };
 }

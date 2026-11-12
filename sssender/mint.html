@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>sssender magic link</title>
-<link rel="stylesheet" href="./ui/fonts.css?v=5ebe50b">
-<link rel="stylesheet" href="./ui/style.css?v=5ebe50b">
+<link rel="stylesheet" href="./ui/fonts.css?v=add5a5d">
+<link rel="stylesheet" href="./ui/style.css?v=add5a5d">
 </head>
 <body data-root="sssender/">
 <h1>sssender</h1>
-<p class="subtitle">Mint a magic link enabling upload to a specified bucket prefix for up to 7 days. S3 credentials entered here are used only for locally signing the POST request policy that enables upload and do not leave your machine.</p>
+<p class="subtitle">Mint a magic link enabling upload to a specified bucket prefix for up to 7 days. S3 credentials entered here are used only for locally signing the upload policy, and never leave your machine.</p>
 
 <div id="mint-form">
   <div class="section-head">Credentials</div>
@@ -61,11 +61,11 @@
   <div class="link-note" id="result-note"></div>
   <textarea id="result-link" readonly rows="4" aria-label="Magic link"></textarea>
   <button id="copy-btn" type="button">Copy</button>
-  <div class="link-note">Anyone with this link can upload into that prefix until expiry. They cannot list, read or delete anything.</div>
+  <div class="link-note">Anyone with this link may upload to that prefix until expiry. They may not however read or delete anything.</div>
 </div>
 
 <p class="info footer-links"><a href="./">back to sssender</a></p>
 
-<script type="module" src="./ui/mint-page.js?v=5ebe50b"></script>
+<script type="module" src="./ui/mint-page.js?v=add5a5d"></script>
 </body>
 </html>

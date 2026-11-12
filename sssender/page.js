@@ -1,8 +1,8 @@
 // sssender: upload files as they are, via a magic link or S3 credentials, under sssender/
-import { DEFAULT_ROOT } from "./core/mint.js?v=5ebe50b";
-import { findOversizeFiles, rawTransform } from "./core/pipeline.js?v=5ebe50b";
-import { SSSENDER_VERSION, SSSENDER_COMMIT } from "./core/version.js?v=5ebe50b";
-import { renderFileList } from "./ui/run-view.js?v=5ebe50b";
+import { DEFAULT_ROOT } from "./core/mint.js?v=add5a5d";
+import { findOversizeFiles, rawTransform } from "./core/pipeline.js?v=add5a5d";
+import { SSSENDER_VERSION, SSSENDER_COMMIT } from "./core/version.js?v=add5a5d";
+import { renderFileList } from "./ui/run-view.js?v=add5a5d";
 import {
   bindCancel,
   bindSelection,
@@ -10,7 +10,7 @@ import {
   readMagicLink,
   showMode,
   uploadSelection,
-} from "./ui/upload-page.js?v=5ebe50b";
+} from "./ui/upload-page.js?v=add5a5d";
 import {
   bindCredentialForm,
   bindUploadName,
@@ -20,11 +20,11 @@ import {
   makeStatus,
   oversizeMessage,
   setButtonDisabled,
-} from "./ui/ui.js?v=5ebe50b";
+} from "./ui/ui.js?v=add5a5d";
 
 const APP = "sssender";
 const ROOT = DEFAULT_ROOT; // credential uploads. A link's prefix is fixed by its policy
-const CONCURRENCY = 4; // files in flight at once. The credential uploader caps itself lower
+const CONCURRENCY = 2; // files in flight at once
 
 const { link: LINK, linkError } = readMagicLink();
 
@@ -62,6 +62,7 @@ const linkExpired = showMode({
 });
 
 const selection = bindSelection({
+  dropAnywhere: true,
   isBusy: () => isBusy,
   onChange(sel) {
     busyIndicator.stop(); // a new selection or Reset clears a finished run's title
