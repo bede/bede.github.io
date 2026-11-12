@@ -1,9 +1,9 @@
 // Deacon filtering on a worker, plus an sssender transform for updeacon-s3
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=3c29449-dirty-20261112164946";
-import { relativePath } from "./sssender/core/select.js?v=3c29449-dirty-20261112164946";
-import { VERSION } from "./version.js?v=3c29449-dirty-20261112164946";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=b7c2564";
+import { relativePath } from "./sssender/core/select.js?v=b7c2564";
+import { VERSION } from "./version.js?v=b7c2564";
 
-const ASSET_VERSION = "3c29449-dirty-20261112164946";
+const ASSET_VERSION = "b7c2564";
 
 // Output is always gzip
 const GZ_RE = /\.gz$/i;

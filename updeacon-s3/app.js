@@ -1,6 +1,6 @@
 // updeacon-s3: filter fa/fq with Deacon in the browser, then upload via sssender
-import { DEACON_VERSION } from "./protocol.js?v=3c29449-dirty-20261112164946";
-import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=3c29449-dirty-20261112164946";
+import { DEACON_VERSION } from "./protocol.js?v=b7c2564";
+import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=b7c2564";
 import {
   FILTER_INDEX_URL as INDEX_URL,
   clearCachedIndex,
@@ -8,13 +8,13 @@ import {
   getCachedIndex,
   pruneStaleIndexes,
   putCachedIndex,
-} from "./index-cache.js?v=3c29449-dirty-20261112164946";
-import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=3c29449-dirty-20261112164946";
-import { VERSION, BUILD_COMMIT } from "./version.js?v=3c29449-dirty-20261112164946";
-import { purgeStaleSpools } from "./sssender/core/spool.js?v=3c29449-dirty-20261112164946";
-import { findOversizeFiles } from "./sssender/core/pipeline.js?v=3c29449-dirty-20261112164946";
-import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=3c29449-dirty-20261112164946";
-import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=3c29449-dirty-20261112164946";
+} from "./index-cache.js?v=b7c2564";
+import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=b7c2564";
+import { VERSION, BUILD_COMMIT } from "./version.js?v=b7c2564";
+import { purgeStaleSpools } from "./sssender/core/spool.js?v=b7c2564";
+import { findOversizeFiles } from "./sssender/core/pipeline.js?v=b7c2564";
+import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=b7c2564";
+import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=b7c2564";
 import {
   bindCredentialForm,
   bindUploadName,
@@ -25,7 +25,7 @@ import {
   plural,
   setButtonDisabled,
   summariseSelection,
-} from "./sssender/ui/ui.js?v=3c29449-dirty-20261112164946";
+} from "./sssender/ui/ui.js?v=b7c2564";
 
 const APP = "updeacon";
 const ROOT = "updeacon/"; // matches mint.html's data-root
