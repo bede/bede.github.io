@@ -1,148 +1,68 @@
-import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=c0c6c58";
+import { MSG, FILTER_DEFAULTS } from "./protocol.js?v=3c29449-dirty-20261112164946";
 
-// Off-main-thread Deacon filtering, pull-driven (one batch per MSG.PULL) so memory stays bounded
+// Deacon filtering off the main thread. One output batch per PULL bounds memory
 let wasm = null;
 let index = null;
-const ASSET_VERSION = "c0c6c58";
-const OUTPUT_BATCH_BYTES = 4 * 1024 * 1024; // 4 MiB
+const ASSET_VERSION = "3c29449-dirty-20261112164946";
+const OUTPUT_BATCH_BYTES = 4 * 1024 * 1024;
+const PROGRESS_MS = 150;
 
-// wasm-bindgen throws Result errors as plain strings with no .message. Normalise so the reason survives
+// wasm-bindgen throws Result errors as plain strings
 function errText(err) {
   if (err == null) return "Unknown error";
   if (typeof err === "string") return err;
   return err.message || String(err);
 }
 
-// Per-file state, set up by MSG.FILTER and drained by MSG.PULL
+// Current session, set up by FILTER and drained by PULL
 let active = null;
 
-function isGzipFilename(name) {
-  return /\.(fastq|fq|fasta|fa)\.gz$/i.test(name || "");
-}
-
-function isSeqFilename(name) {
-  return /\.(fastq|fq|fasta|fa)(\.gz)?$/i.test(name || "");
-}
-
-// Per-session threshold overrides from the FILTER payload, else FILTER_DEFAULTS
-function resolveParams(data) {
-  return {
-    deplete: data.deplete ?? FILTER_DEFAULTS.deplete,
-    absThreshold: data.absThreshold ?? FILTER_DEFAULTS.absThreshold,
-    relThreshold: data.relThreshold ?? FILTER_DEFAULTS.relThreshold,
-  };
-}
-
-function startFilter(data) {
-  const params = resolveParams(data);
-  if (data.file1 && data.file2) {
-    return startPairedFilter(data.file1, data.file2, params);
-  }
-  return startSingleFilter(data.file, params);
-}
-
-function startSingleFilter(file, params) {
+// { files: [file] | [r1, r2], ...FILTER_DEFAULTS overrides }
+function startFilter({ files, ...overrides }) {
   if (!index) throw new Error("No index loaded");
-  if (!file || typeof file.stream !== "function") throw new Error("Missing sequence file");
-  if (!isSeqFilename(file.name)) {
-    throw new Error("Only FASTA/FASTQ files are supported (.fasta/.fa/.fastq/.fq, optionally .gz)");
+  const { deplete, absThreshold, relThreshold, rename, discardQuality } = { ...FILTER_DEFAULTS, ...overrides };
+  const gz = files.map((f) => /\.gz$/i.test(f.name));
+  // Always gzip output. Paired sessions return { r1, r2 }
+  let session, push, finish;
+  if (files.length === 2) {
+    session = new wasm.PairedFilterSession(
+      index, deplete, absThreshold, relThreshold, gz[0], gz[1], true, true, rename, discardQuality
+    );
+    push = [(c) => session.push_r1(c), (c) => session.push_r2(c)];
+    finish = [() => session.finish_r1(), () => session.finish_r2()];
+  } else {
+    session = new wasm.FilterSession(index, deplete, absThreshold, relThreshold, gz[0], true, rename, discardQuality);
+    push = [(c) => ({ r1: session.push_chunk(c) })];
+    finish = [() => ({ r1: session.finish() })];
   }
-
-  const isGz = isGzipFilename(file.name);
-  const session = new wasm.FilterSession(
-    index,
-    params.deplete,
-    params.absThreshold,
-    params.relThreshold,
-    isGz, // decompress_input
-    true, // compress_output (always gzip; uncompressed inputs get a .gz name in app.js)
-    FILTER_DEFAULTS.rename,
-    FILTER_DEFAULTS.discardQuality
-  );
-
   active = {
-    mode: "single",
     session,
-    reader: file.stream().getReader(),
-    isGz,
-    totalBytes: file.size || 0,
+    push,
+    finish,
+    readers: files.map((f) => f.stream().getReader()),
+    ended: files.map(() => false),
+    out: files.map(() => []), // pending buffers per file
+    outBytes: 0,
+    totalBytes: files.reduce((n, f) => n + (f.size || 0), 0),
     processedBytes: 0,
-    pendingBuffers: [],
-    pendingBytes: 0,
-    finished: false,
     lastProgressTs: 0,
     t0: performance.now(),
   };
 }
 
-function startPairedFilter(file1, file2, params) {
-  if (!index) throw new Error("No index loaded");
-  for (const file of [file1, file2]) {
-    if (!file || typeof file.stream !== "function") throw new Error("Missing paired sequence file");
-    if (!isSeqFilename(file.name)) {
-      throw new Error("Only FASTA/FASTQ files are supported (.fasta/.fa/.fastq/.fq, optionally .gz)");
-    }
-  }
-
-  const r1Gz = isGzipFilename(file1.name);
-  const r2Gz = isGzipFilename(file2.name);
-  const session = new wasm.PairedFilterSession(
-    index,
-    params.deplete,
-    params.absThreshold,
-    params.relThreshold,
-    r1Gz, // decompress_r1
-    r2Gz, // decompress_r2
-    true, // compress_r1 (always gzip; uncompressed inputs get a .gz name in app.js)
-    true, // compress_r2 (always gzip; uncompressed inputs get a .gz name in app.js)
-    FILTER_DEFAULTS.rename,
-    FILTER_DEFAULTS.discardQuality
-  );
-
-  active = {
-    mode: "paired",
-    session,
-    readerR1: file1.stream().getReader(),
-    readerR2: file2.stream().getReader(),
-    doneR1: false,
-    doneR2: false,
-    isGz: r1Gz || r2Gz,
-    totalBytes: (file1.size || 0) + (file2.size || 0),
-    processedBytes: 0,
-    pendingBuffersR1: [],
-    pendingBuffersR2: [],
-    pendingBytes: 0,
-    finished: false,
-    lastProgressTs: 0,
-    t0: performance.now(),
-  };
-}
-
-// Append a chunk of filtered output, transferring its buffer
-function appendOutput(chunk) {
-  if (!chunk || chunk.length === 0) return;
-  const buffer =
-    chunk.byteOffset === 0 && chunk.byteLength === chunk.buffer.byteLength
-      ? chunk.buffer
-      : chunk.slice().buffer;
-  active.pendingBuffers.push(buffer);
-  active.pendingBytes += buffer.byteLength;
-}
-
-function appendPairedOutput(out) {
-  for (const [chunk, key] of [[out.r1, "pendingBuffersR1"], [out.r2, "pendingBuffersR2"]]) {
-    if (!chunk || chunk.length === 0) continue;
+// Queue output for transfer, copying views of larger buffers
+function append({ r1, r2 }) {
+  [r1, r2].forEach((chunk, i) => {
+    if (!chunk?.length) return;
     const buffer =
-      chunk.byteOffset === 0 && chunk.byteLength === chunk.buffer.byteLength
-        ? chunk.buffer
-        : chunk.slice().buffer;
-    active[key].push(buffer);
-    active.pendingBytes += buffer.byteLength;
-  }
+      chunk.byteOffset === 0 && chunk.byteLength === chunk.buffer.byteLength ? chunk.buffer : chunk.slice().buffer;
+    active.out[i].push(buffer);
+    active.outBytes += buffer.byteLength;
+  });
 }
 
 function postProgress() {
-  // Running read counts for the live host tier. Mid-stream stats() may be unsupported
+  // Mid-stream stats() may be unsupported
   let readsIn = 0;
   let readsOut = 0;
   try {
@@ -154,141 +74,52 @@ function postProgress() {
     type: MSG.PROGRESS,
     bytesProcessed: active.processedBytes,
     bytesTotal: active.totalBytes,
-    progressCompressed: active.isGz,
     readsIn,
     readsOut,
   });
 }
 
-// Pump input until one batch is ready or input ends, then post OUTPUT_CHUNK_BATCH (done + stats at EOF)
+// Read input (mates alternately) until a batch is ready or input ends.
+// chunks: [[…r1], […r2]], with stats once done
 async function pump() {
   const a = active;
-  if (a.mode === "paired") return pumpPaired();
-
-  while (a.pendingBytes < OUTPUT_BATCH_BYTES && !a.finished) {
-    const { value, done } = await a.reader.read();
-    if (done) {
-      appendOutput(a.session.finish());
-      a.finished = true;
-      break;
+  const finished = () => a.ended.every(Boolean);
+  while (a.outBytes < OUTPUT_BATCH_BYTES && !finished()) {
+    for (let i = 0; i < a.readers.length; i++) {
+      if (a.ended[i]) continue;
+      const { value, done } = await a.readers[i].read();
+      if (done) {
+        a.ended[i] = true;
+        append(a.finish[i]());
+      } else if (value.length) {
+        a.processedBytes += value.length;
+        append(a.push[i](value));
+      }
     }
-    if (!value || value.length === 0) continue;
-    a.processedBytes += value.length;
-    appendOutput(a.session.push_chunk(value));
-
     const now = performance.now();
-    if (now - a.lastProgressTs >= 150) {
+    if (now - a.lastProgressTs >= PROGRESS_MS) {
       postProgress();
       a.lastProgressTs = now;
     }
   }
 
-  const chunks = a.pendingBuffers;
-  a.pendingBuffers = [];
-  a.pendingBytes = 0;
-
-  if (a.finished) {
-    const stats = a.session.stats();
-    const elapsed = ((performance.now() - a.t0) / 1000).toFixed(2);
+  const chunks = a.out;
+  a.out = chunks.map(() => []);
+  a.outBytes = 0;
+  const msg = { type: MSG.OUTPUT_CHUNK_BATCH, chunks, done: finished() };
+  if (msg.done) {
     postProgress();
-    self.postMessage(
-      {
-        type: MSG.OUTPUT_CHUNK_BATCH,
-        chunks,
-        done: true,
-        stats,
-        elapsed,
-        bytesProcessed: a.processedBytes,
-        bytesTotal: a.totalBytes,
-        progressCompressed: a.isGz,
-      },
-      chunks
-    );
+    msg.stats = a.session.stats();
+    msg.elapsed = ((performance.now() - a.t0) / 1000).toFixed(2);
     a.session.free();
     active = null;
-  } else {
-    self.postMessage({ type: MSG.OUTPUT_CHUNK_BATCH, chunks, done: false }, chunks);
   }
-}
-
-async function pumpPaired() {
-  const a = active;
-  while (a.pendingBytes < OUTPUT_BATCH_BYTES && !a.finished) {
-    if (!a.doneR1) {
-      const { value, done } = await a.readerR1.read();
-      if (done) {
-        a.doneR1 = true;
-        appendPairedOutput(a.session.finish_r1());
-      } else if (value && value.length > 0) {
-        a.processedBytes += value.length;
-        appendPairedOutput(a.session.push_r1(value));
-      }
-    }
-
-    if (!a.doneR2) {
-      const { value, done } = await a.readerR2.read();
-      if (done) {
-        a.doneR2 = true;
-        appendPairedOutput(a.session.finish_r2());
-      } else if (value && value.length > 0) {
-        a.processedBytes += value.length;
-        appendPairedOutput(a.session.push_r2(value));
-      }
-    }
-
-    if (a.doneR1 && a.doneR2) a.finished = true;
-
-    const now = performance.now();
-    if (now - a.lastProgressTs >= 150) {
-      postProgress();
-      a.lastProgressTs = now;
-    }
-  }
-
-  const chunksR1 = a.pendingBuffersR1;
-  const chunksR2 = a.pendingBuffersR2;
-  a.pendingBuffersR1 = [];
-  a.pendingBuffersR2 = [];
-  a.pendingBytes = 0;
-
-  if (a.finished) {
-    const stats = a.session.stats();
-    const elapsed = ((performance.now() - a.t0) / 1000).toFixed(2);
-    postProgress();
-    self.postMessage(
-      {
-        type: MSG.OUTPUT_CHUNK_BATCH,
-        chunksR1,
-        chunksR2,
-        done: true,
-        stats,
-        elapsed,
-        bytesProcessed: a.processedBytes,
-        bytesTotal: a.totalBytes,
-        progressCompressed: a.isGz,
-      },
-      [...chunksR1, ...chunksR2]
-    );
-    a.session.free();
-    active = null;
-  } else {
-    self.postMessage({ type: MSG.OUTPUT_CHUNK_BATCH, chunksR1, chunksR2, done: false }, [
-      ...chunksR1,
-      ...chunksR2,
-    ]);
-  }
+  self.postMessage(msg, chunks.flat());
 }
 
 function disposeActive() {
   if (!active) return;
-  try {
-    if (active.mode === "paired") {
-      active.readerR1.cancel();
-      active.readerR2.cancel();
-    } else {
-      active.reader.cancel();
-    }
-  } catch (_) {}
+  for (const reader of active.readers) reader.cancel().catch(() => {});
   try {
     active.session.free();
   } catch (_) {}
@@ -316,7 +147,7 @@ self.onmessage = async function (e) {
       index = new wasm.WasmIndex(new Uint8Array(data));
       self.postMessage({ type: MSG.INDEX_LOADED, info: index.info() });
     } catch (err) {
-      // wasm error already carries a "Failed to load index: …" prefix, so surface as-is
+      // Already prefixed "Failed to load index: …"
       self.postMessage({ type: MSG.ERROR, message: errText(err) });
     }
     return;
@@ -325,7 +156,6 @@ self.onmessage = async function (e) {
   if (type === MSG.RESET) {
     disposeActive();
     index = null;
-    self.postMessage({ type: MSG.RESET_DONE });
     return;
   }
 

@@ -1,5 +1,6 @@
 // Sequence files grouped for sssender: R1/R2 mates as one two-file group, others alone
-import { relativePath } from "./sssender/core/select.js?v=c0c6c58";
+import { plural } from "./sssender/core/format.js?v=3c29449-dirty-20261112164946";
+import { relativePath } from "./sssender/core/select.js?v=3c29449-dirty-20261112164946";
 
 export const SEQ_RE = /\.(fastq|fq|fasta|fa)(\.gz)?$/i;
 
@@ -39,8 +40,7 @@ function mateInfo(file) {
   return null;
 }
 
-// Group every "<dir>/<prefix>_" onto the set of trailing integers that follow it,
-// so we can tell a true _1/_2 mate pair from ONT read chunks numbered _0, _1, _2, _3, …
+// Trailing integers per "<dir>/<prefix>_", to tell _1/_2 mates from ONT chunks _0, _1, _2, …
 function numericSiblingSets(seqs) {
   const sets = new Map();
   for (const file of seqs) {
@@ -72,8 +72,7 @@ export function pairSequenceFiles(files) {
       continue;
     }
     if (info.bareDigit) {
-      // Only pair bare _1/_2 when they are the *only* numbered files sharing this
-      // prefix. Any other number (_3, _4) means these are treated as ONT.
+      // Pair bare _1/_2 only when no other number shares the prefix, else they're ONT chunks
       const numbers = numericSiblings.get(info.key.replace("{mate}", ""));
       const onlyMates = numbers && [...numbers].every((n) => n === 1 || n === 2);
       if (!onlyMates) {
@@ -110,12 +109,12 @@ export function pairSequenceFiles(files) {
   return groups;
 }
 
-// Count work groups the way a user sees them: "1 pair", "2 files", "1 pair and 2 files"
+// "1 pair", "2 files", "1 pair and 2 files"
 export function describeGroups(groups) {
   const pairs = groups.filter(isPaired).length;
   const files = groups.length - pairs;
   const parts = [];
-  if (pairs) parts.push(`${pairs} pair${pairs === 1 ? "" : "s"}`);
-  if (files) parts.push(`${files} file${files === 1 ? "" : "s"}`);
+  if (pairs) parts.push(plural(pairs, "pair"));
+  if (files) parts.push(plural(files, "file"));
   return parts.join(" and ") || "0 files";
 }

@@ -1,8 +1,8 @@
 // Mint page for any app on sssender. <body data-root="app/"> names the app's upload
 // root (required). The link opens the app in this directory
-import { checkRoot, mintMagicLink } from "../core/mint.js?v=c0c6c58";
-import { normaliseEndpoint } from "../core/uploaders.js?v=c0c6c58";
-import { humanBytes, humanDate } from "./ui.js?v=c0c6c58";
+import { checkRoot, mintMagicLink } from "../core/mint.js?v=3c29449-dirty-20261112164946";
+import { normaliseEndpoint } from "../core/uploaders.js?v=3c29449-dirty-20261112164946";
+import { humanDate } from "./ui.js?v=3c29449-dirty-20261112164946";
 
 const $ = (id) => document.getElementById(id);
 const root = checkRoot(document.body.dataset.root);
@@ -28,7 +28,7 @@ async function mint() {
       baseUrl: new URL("./", location.href).href,
     });
     $("result-dest").textContent = `${val("bucket")}/${prefix.replace(/\/$/, "")}`;
-    $("result-note").textContent = `Expires ${humanDate(expiresAt.getTime())}. Up to ${humanBytes(maxBytes)} per file.`;
+    $("result-note").textContent = `Expires ${humanDate(expiresAt.getTime())}.`;
     $("result-link").value = link;
     $("result").hidden = false;
     setError();

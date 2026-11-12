@@ -1,6 +1,6 @@
 // Run progress: the file list, and a view on runUpload's hooks driving the bar, its
 // label and a row per group, several in flight at once
-import { humanBytes } from "./ui.js?v=c0c6c58";
+import { humanBytes } from "./ui.js?v=3c29449-dirty-20261112164946";
 
 export function renderFileList(listEl, groups) {
   listEl.innerHTML = "";
@@ -32,6 +32,40 @@ function shortReason(err) {
 //   transform  null for raw uploads, else { verb, past }, e.g. { verb: "filtering", past: "filtered" }
 //   streaming  transform output streams into the upload (credential mode)
 //   doneText(item, result) -> a finished row's text
+// An upload that stops moving says so on its row and after the label, both amber
+// (class "trouble"), rather than look frozen until a timeout gives up on it
+export const QUIET_NOTICE_MS = 60 * 1000;
+const QUIET_TICK_MS = 5 * 1000;
+const WAITING = "waiting for connection";
+
+// Keeps the first row in flight in view in a scrolling list (one done row above it
+// for context), until the user scrolls it away. Scrolling back to it follows again.
+// A no-op without a laid-out list (tests)
+function followActive(list, rows) {
+  if (!list || typeof list.getBoundingClientRect !== "function") return () => {};
+  let following = true;
+  let expectedTop = list.scrollTop;
+  let current = -1;
+  const inView = (li) => {
+    const box = list.getBoundingClientRect();
+    const r = li.getBoundingClientRect();
+    return r.bottom > box.top && r.top < box.bottom;
+  };
+  // Replaces the previous run's handler: one list, one run at a time
+  list.onscroll = () => {
+    if (Math.abs(list.scrollTop - expectedTop) <= 2) return; // ours
+    following = current >= 0 && inView(rows[current].li);
+    expectedTop = list.scrollTop;
+  };
+  return (first) => {
+    current = first;
+    if (!following || first < 0) return;
+    const top = rows[Math.max(0, first - 1)].li;
+    list.scrollTop += top.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    expectedTop = list.scrollTop; // as clamped
+  };
+}
+
 export function makeRunView({
   wrap,
   bar,
@@ -41,12 +75,20 @@ export function makeRunView({
   transform = null,
   streaming = false,
   doneText = () => "done",
+  nowFn = Date.now,
+  setIntervalFn = setInterval,
+  clearIntervalFn = clearInterval,
+  list = rows[0]?.li.parentElement,
 }) {
   const totalBytes = groups.reduce((n, g) => n + g.size, 0);
   const count = groups.length;
   const state = new Map(); // in-flight groups: i -> progress
   let finishedBytes = 0; // input bytes of finished groups, skipped ones included
   let finished = 0; // groups done or skipped
+  let quietTimer = null;
+  const follow = followActive(list, rows);
+  const followFirst = () => follow(state.size ? Math.min(...state.keys()) : -1);
+  const setTrouble = (el, on) => el?.classList?.toggle("trouble", on);
 
   // Progress in input bytes: read by a transform, else sent
   const progressBytes = () => {
@@ -55,25 +97,84 @@ export function makeRunView({
     return Math.min(n, totalBytes);
   };
 
-  const renderRow = (i) => {
-    const s = state.get(i);
-    const st = rows[i].st;
-    if (s.retry) {
-      st.textContent = s.retry;
-    } else if (s.uploading) {
+  const rowText = (i, s) => {
+    if (s.retry) return s.retry;
+    if (s.uploading) {
       const pct = s.uploadTotal ? Math.min(100, (s.uploaded / s.uploadTotal) * 100) : 100;
-      st.textContent = `uploading ${pct.toFixed(0)}%`;
-    } else if (transform) {
+      return `uploading ${pct.toFixed(0)}%`;
+    }
+    if (transform) {
       const size = groups[i].size;
       const pct = size ? Math.min(100, (s.processed / size) * 100) : 100;
-      st.textContent = streaming
+      return streaming
         ? `${transform.past} ${pct.toFixed(0)}%, uploaded ${humanBytes(s.uploaded)}`
         : `${transform.verb} ${pct.toFixed(0)}%`;
-    } else if (s.uploaded) {
-      const pct = groups[i].size ? Math.min(100, (s.uploaded / groups[i].size) * 100) : 100;
-      st.textContent = `uploading ${pct.toFixed(0)}%`;
     }
+    if (s.uploaded) {
+      const pct = groups[i].size ? Math.min(100, (s.uploaded / groups[i].size) * 100) : 100;
+      return `uploading ${pct.toFixed(0)}%`;
+    }
+    return null;
   };
+
+  const renderRow = (i) => {
+    const s = state.get(i);
+    const text = rowText(i, s);
+    if (text == null) return;
+    rows[i].st.textContent = s.quietMin && !s.retry ? `${text}, no progress for ${s.quietMin} min` : text;
+    setTrouble(rows[i].li, Boolean(s.retry || s.quietMin));
+  };
+
+  // What's wrong across the groups in flight, for the label: "" when all is well
+  const troubleText = () => {
+    let waiting = false;
+    let retrying = 0;
+    let quietMin = 0;
+    for (const s of state.values()) {
+      if (s.retry === WAITING) waiting = true;
+      else if (s.retry) retrying++;
+      else quietMin = Math.max(quietMin, s.quietMin);
+    }
+    if (waiting) return WAITING;
+    const parts = [];
+    if (retrying) parts.push(`${retrying === 1 ? "1 upload" : `${retrying} uploads`} retrying`);
+    if (quietMin) parts.push(`no progress for ${quietMin} min`);
+    return parts.join(", ");
+  };
+
+  const stopQuietTimer = () => {
+    if (quietTimer !== null) clearIntervalFn(quietTimer);
+    quietTimer = null;
+  };
+  const checkQuiet = () => {
+    if (!state.size) return stopQuietTimer();
+    const now = nowFn();
+    let changed = false;
+    for (const [i, s] of state) {
+      if (!s.uploading && !s.uploaded) continue; // a transform may be slow to start
+      const quiet = now - s.movedAt;
+      const quietMin = quiet >= QUIET_NOTICE_MS ? Math.floor(quiet / 60000) : 0;
+      if (quietMin === s.quietMin) continue;
+      s.quietMin = quietMin;
+      renderRow(i);
+      changed = true;
+    }
+    if (changed) renderLabel();
+  };
+  const startQuietTimer = () => {
+    if (quietTimer !== null) return;
+    quietTimer = setIntervalFn(checkQuiet, QUIET_TICK_MS);
+    quietTimer?.unref?.(); // Node (tests): never hold the process open
+  };
+  const freshState = () => ({
+    processed: 0,
+    uploaded: 0,
+    uploadTotal: 0,
+    uploading: false,
+    retry: "",
+    movedAt: nowFn(),
+    quietMin: 0,
+  });
 
   const renderLabel = () => {
     const active = [...state.keys()];
@@ -81,31 +182,48 @@ export function makeRunView({
     const bytes = progressBytes();
     const pct = totalBytes ? (bytes / totalBytes) * 100 : 0;
     bar.value = pct;
-    const where =
-      active.length === 1 ? `${active[0] + 1} of ${count}` : `${active.length} at once, ${finished} of ${count} done`;
+    const one = active.length === 1;
     // After a transform only a spooled upload moves: show its bytes
     const uploadingOnly = transform && active.every((i) => state.get(i).uploading);
-    if (uploadingOnly && active.length === 1) {
-      const s = state.get(active[0]);
-      label.textContent = `Uploading ${where}: ${humanBytes(s.uploaded)} / ${humanBytes(s.uploadTotal)}`;
-      return;
-    }
     const verb = transform && !uploadingOnly ? capitalise(transform.verb) : "Uploading";
-    label.textContent =
-      `${verb} ${where}: ${humanBytes(bytes)} / ${humanBytes(totalBytes)} (${pct.toFixed(1)}%)`;
+    const overall = `${humanBytes(bytes)} / ${humanBytes(totalBytes)} (${pct.toFixed(1)}%)`;
+    let text;
+    if (one && uploadingOnly) {
+      const s = state.get(active[0]);
+      text = `Uploading ${active[0] + 1} of ${count}: ${humanBytes(s.uploaded)} / ${humanBytes(s.uploadTotal)}`;
+    } else if (one) {
+      text = `${verb} ${active[0] + 1} of ${count}: ${overall}`;
+    } else {
+      text = `${verb}: ${finished} of ${count} done, ${overall}`;
+    }
+    const trouble = troubleText();
+    label.textContent = trouble ? `${text} · ${trouble}` : text;
+    setTrouble(label, Boolean(trouble));
+  };
+  const settleLabel = (text) => {
+    label.textContent = text;
+    setTrouble(label, false);
   };
 
   const update = (i, patch) => {
     const s = state.get(i);
     if (!s) return; // a late event from a group that already ended
+    // Bytes moving, or a retry starting over, restarts the quiet clock
+    const moved =
+      (patch.uploaded ?? 0) > s.uploaded || (patch.processed ?? 0) > s.processed || patch.retry || patch.uploading;
     Object.assign(s, patch);
+    if (moved) {
+      s.movedAt = nowFn();
+      s.quietMin = 0;
+    }
     renderRow(i);
     renderLabel();
   };
 
   wrap.style.display = "block";
   bar.value = 0;
-  label.textContent = "";
+  settleLabel("");
+  if (list) list.scrollTop = 0;
   rows.forEach(({ li, st }) => {
     li.className = "";
     st.textContent = "queued";
@@ -113,10 +231,12 @@ export function makeRunView({
 
   return {
     onGroupStart(i) {
-      state.set(i, { processed: 0, uploaded: 0, uploadTotal: 0, uploading: false, retry: "" });
+      state.set(i, freshState());
+      startQuietTimer();
       rows[i].li.className = "active";
       rows[i].st.textContent = transform ? `${transform.verb}…` : "uploading…";
       renderLabel();
+      followFirst();
     },
     onTransformProgress(i, msg) {
       update(i, { processed: msg.bytesProcessed || 0 });
@@ -136,13 +256,13 @@ export function makeRunView({
         retry: info.resumed
           ? ""
           : info.waitingOnline
-            ? "waiting for connection"
+            ? WAITING
             : `retrying (attempt ${info.attempt ?? 1})${reason ? `: ${reason}` : ""}`,
       });
     },
     onGroupRetry(i, _item, err) {
       if (rows[i]) rows[i].li.title = err?.message || String(err);
-      state.set(i, { processed: 0, uploaded: 0, uploadTotal: 0, uploading: false, retry: "" });
+      state.set(i, freshState());
       if (rows[i]) rows[i].st.textContent = "starting again…";
       renderLabel();
     },
@@ -154,6 +274,7 @@ export function makeRunView({
       rows[i].st.textContent = doneText(item, result);
       bar.value = totalBytes ? (finishedBytes / totalBytes) * 100 : 0;
       renderLabel();
+      followFirst();
     },
     onGroupFailed(i, _item, err) {
       state.delete(i);
@@ -164,6 +285,7 @@ export function makeRunView({
       rows[i].st.textContent = "failed, skipped";
       bar.value = totalBytes ? (finishedBytes / totalBytes) * 100 : 0;
       renderLabel();
+      followFirst();
     },
     // Group i failed fatally and stopped those still in flight
     fail(i) {
@@ -173,7 +295,8 @@ export function makeRunView({
         rows[j].st.textContent = "stopped";
       }
       state.clear();
-      label.textContent = `Stopped: ${finished} of ${count} done.`;
+      stopQuietTimer();
+      settleLabel(`Stopped: ${finished} of ${count} done.`);
       if (!rows[i]) return;
       rows[i].li.className = "failed";
       rows[i].st.textContent = "failed";
@@ -185,11 +308,13 @@ export function makeRunView({
         rows[j].st.textContent = "cancelled";
       }
       state.clear();
-      label.textContent = `Cancelled: ${finished} of ${count} done.`;
+      stopQuietTimer();
+      settleLabel(`Cancelled: ${finished} of ${count} done.`);
     },
     finish(text) {
+      stopQuietTimer();
       bar.value = 100;
-      label.textContent = text;
+      settleLabel(text);
     },
   };
 }

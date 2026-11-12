@@ -1,12 +1,20 @@
 // updeacon-s3: filter fa/fq with Deacon in the browser, then upload via sssender
-import { DEACON_VERSION } from "./protocol.js?v=c0c6c58";
-import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=c0c6c58";
-import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=c0c6c58";
-import { VERSION, BUILD_COMMIT } from "./version.js?v=c0c6c58";
-import { purgeStaleSpools } from "./sssender/core/spool.js?v=c0c6c58";
-import { findOversizeFiles } from "./sssender/core/pipeline.js?v=c0c6c58";
-import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=c0c6c58";
-import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=c0c6c58";
+import { DEACON_VERSION } from "./protocol.js?v=3c29449-dirty-20261112164946";
+import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=3c29449-dirty-20261112164946";
+import {
+  FILTER_INDEX_URL as INDEX_URL,
+  clearCachedIndex,
+  downloadIndex,
+  getCachedIndex,
+  pruneStaleIndexes,
+  putCachedIndex,
+} from "./index-cache.js?v=3c29449-dirty-20261112164946";
+import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=3c29449-dirty-20261112164946";
+import { VERSION, BUILD_COMMIT } from "./version.js?v=3c29449-dirty-20261112164946";
+import { purgeStaleSpools } from "./sssender/core/spool.js?v=3c29449-dirty-20261112164946";
+import { findOversizeFiles } from "./sssender/core/pipeline.js?v=3c29449-dirty-20261112164946";
+import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=3c29449-dirty-20261112164946";
+import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=3c29449-dirty-20261112164946";
 import {
   bindCredentialForm,
   bindUploadName,
@@ -14,24 +22,20 @@ import {
   makeBusyIndicator,
   makeStatus,
   oversizeMessage,
+  plural,
   setButtonDisabled,
   summariseSelection,
-} from "./sssender/ui/ui.js?v=c0c6c58";
+} from "./sssender/ui/ui.js?v=3c29449-dirty-20261112164946";
 
-// --- Fixed configuration -----------------------------------------------------
 const APP = "updeacon";
-const ROOT = "updeacon/"; // credential uploads, kept in step with mint.html's data-root
-const SPOOL_DIR = "updeacon-spool"; // predates sssender. Renaming would orphan old spools
-const MAX_INDEX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
-
-const INDEX_URL =
-  "https://objectstorage.uk-london-1.oraclecloud.com/n/lrbvkel2wjot/b/human-genome-bucket/o/deacon/3/panhuman-1.k31w25c9b16.pidx";
-const INDEX_FILENAME = "panhuman-1.k31w25c9b16.pidx";
-const INDEX_DISPLAY_NAME = "Index: panhuman-1"; // shown in panel; filename kept for summaries
+const ROOT = "updeacon/"; // matches mint.html's data-root
+const SPOOL_DIR = "updeacon-spool"; // renaming would orphan old spools
+const MAX_INDEX_BYTES = 2 * 1024 * 1024 * 1024;
+const INDEX_FILENAME = INDEX_URL.split("/").pop();
+const INDEX_DISPLAY_NAME = "Index: panhuman-1";
 
 const { link: LINK, linkError } = readMagicLink();
 
-// --- DOM ---------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
 const indexStatus = $("index-status");
 const indexInput = $("index-input");
@@ -47,6 +51,7 @@ const progressWrap = $("progress-wrap");
 const runProgress = $("run-progress");
 const runLabel = $("run-label");
 const purgeIndexEl = $("purge-index");
+for (const a of document.querySelectorAll(".index-link")) a.href = INDEX_URL;
 
 const setStatus = makeStatus($("status"));
 const uploadName = bindUploadName({ prefixEl: $("name-prefix"), inputEl: $("run-name") });
@@ -64,23 +69,21 @@ const creds = bindCredentialForm({
   },
 });
 
-// --- State -------------------------------------------------------------------
-let selectedFiles = []; // work groups, each one file or an R1/R2 pair
-let fileRows = []; // { li, st } DOM rows, one per selected group (same order)
-let isBusy = false; // filtering or uploading; blocks other actions
-let uploadCompleted = false; // upload finished; lock buttons until next selection
-let indexLoaded = false;
-let indexFilename = ""; // name of the loaded .idx (recorded in summaries)
-let indexK = null; // k-mer length parsed from the index info string
-let indexW = null; // window size parsed from the index info string
-let indexFailed = false; // download failed; panel acts as a manual drop target
-let indexNeedsDownload = false; // not cached; panel click starts the download
+let selectedFiles = []; // groups
+let fileRows = [];
+let isBusy = false;
+let uploadCompleted = false; // locks buttons until the next selection
 let oversizeFiles = []; // inputs above the link's per-object cap
-let indexFile = null; // a dropped local index, else the cached copy is used
+let indexState = "loading"; // see setIndexState
+let indexFile = null; // a dropped index, else use the cache
+let indexFilename = "";
+let indexK = null;
+let indexW = null;
 
 const indexMeta = () => ({ filename: indexFilename, k: indexK, w: indexW });
+const indexLoaded = () => indexState === "loaded";
+const indexDroppable = () => indexState === "needs-download" || indexState === "failed";
 
-// --- Mode: magic link vs S3 credentials --------------------------------------
 // Link errors go in the banner, as initIndex() overwrites #status
 const linkExpired = showMode({
   link: LINK,
@@ -93,7 +96,6 @@ const linkExpired = showMode({
 });
 if (LINK) purgeStaleSpools({ dir: SPOOL_DIR });
 
-// --- Helpers -----------------------------------------------------------------
 function humanBases(bp) {
   const units = ["bp", "kbp", "Mbp", "Gbp", "Tbp"];
   let i = 0;
@@ -106,7 +108,7 @@ function humanBases(bp) {
 
 // What the user still has to do, given index, selection and mode
 function readyStatus() {
-  if (!indexLoaded) return "";
+  if (!indexLoaded()) return "";
   if (!selectedFiles.length) {
     return LINK
       ? "Index loaded. Select sequences to filter and upload"
@@ -118,7 +120,7 @@ function readyStatus() {
 }
 
 function updateUploadEnabled() {
-  if (!indexLoaded || uploadCompleted) {
+  if (!indexLoaded() || uploadCompleted) {
     setButtonDisabled(uploadBtn, true);
     setButtonDisabled(filterBtn, true);
     return;
@@ -139,13 +141,12 @@ function setBusy(busy) {
   else busyIndicator.finish();
 }
 
-// --- Selection ---------------------------------------------------------------
 // "2 pairs, 1 unpaired", only when something paired
 function pairingDetails(sel) {
   const pairs = sel.groups.filter(isPaired).length;
   const unpaired = sel.groups.length - pairs;
   if (!pairs) return [];
-  return [`${pairs} pair${pairs === 1 ? "" : "s"}`, ...(unpaired ? [`${unpaired} unpaired`] : [])];
+  return [plural(pairs, "pair"), ...(unpaired ? [`${unpaired} unpaired`] : [])];
 }
 
 const selection = bindSelection({
@@ -154,8 +155,8 @@ const selection = bindSelection({
     sel.error ? "Pairing error" : summariseSelection(sel, { noun: "sequence file", details: pairingDetails }),
   isBusy: () => isBusy,
   onChange(sel) {
-    busyIndicator.stop(); // a new selection or Reset clears a finished run's title
-    uploadCompleted = false; // fresh selection clears the post-upload lock
+    busyIndicator.stop(); // clears a finished run's title
+    uploadCompleted = false;
     uploadName.rearm(); // a link is reusable
     selectedFiles = sel.groups;
     oversizeFiles = LINK ? findOversizeFiles(selectedFiles, LINK.maxBytes) : [];
@@ -176,52 +177,84 @@ resetBtn.addEventListener("click", () => {
   if (!isBusy) selection.reset();
 });
 
-// --- Deacon engine -----------------------------------------------------------
+// Index panel: loading, downloading, loaded, needs-download or failed.
+// The last two accept a dropped index
+function setIndexState(state, { name = INDEX_DISPLAY_NAME, info = "" } = {}) {
+  indexState = state;
+  indexStatus.classList.remove("loaded", "needs-download", "failed", "dragover");
+  if (indexLoaded() || indexDroppable()) indexStatus.classList.add(state);
+  indexName.textContent = name;
+  indexInfo.textContent = info;
+  indexInfo.classList.toggle("loading-dots", state === "loading");
+  indexProgress.style.display = state === "downloading" ? "" : "none";
+  indexRetry.hidden = state !== "failed";
+  indexDownload.hidden = state !== "needs-download";
+  updateUploadEnabled();
+}
+
+function showIndexNeedsDownload() {
+  // The download button stands in for the title
+  setIndexState("needs-download", {
+    name: "",
+    info: "No Deacon index cached. Click to download or drop an .idx/.pidx file.",
+  });
+  // Restart the animation
+  indexDownload.classList.remove("pulse-glow");
+  void indexDownload.offsetWidth;
+  indexDownload.classList.add("pulse-glow");
+  setStatus("");
+}
+
+function showIndexFailure(reason) {
+  const info = `${reason.replace(/\.$/, "")}. Click to select a local .idx/.pidx file, drag one here, or retry.`;
+  setIndexState("failed", { info });
+  setStatus("");
+}
+
+function showIndexProgress(received, total) {
+  if (total) {
+    const pct = (received / total) * 100;
+    indexProgress.value = pct;
+    indexInfo.textContent = `${humanBytes(received)} / ${humanBytes(total)} (${pct.toFixed(0)}%)`;
+  } else {
+    indexProgress.removeAttribute("value");
+    indexInfo.textContent = `${humanBytes(received)} downloaded`;
+  }
+}
+
 const engine = createDeaconEngine({
   // After a crash, as the dead worker had the bytes
   async reloadIndex() {
     const source = indexFile ?? (await getCachedIndex(INDEX_URL));
-    if (!source) throw new Error("the index is no longer cached; load it again");
+    if (!source) throw new Error("the index is no longer cached. Load it again");
     return source.arrayBuffer();
   },
   onIndexLoaded(info, { k, w }) {
-    indexLoaded = true;
-    indexFailed = false;
-    indexNeedsDownload = false;
     indexK = k;
     indexW = w;
-    indexStatus.classList.remove("failed", "needs-download");
-    indexStatus.classList.add("loaded");
-    indexProgress.style.display = "none";
-    indexRetry.hidden = true;
-    indexDownload.hidden = true;
-    clearIndexLoading();
-    indexInfo.textContent = info;
+    setIndexState("loaded", { name: indexName.textContent, info });
     setStatus(readyStatus());
-    updateUploadEnabled();
   },
   onError(message) {
-    clearIndexLoading();
-    indexInfo.textContent = "";
+    if (!indexLoaded()) showIndexFailure(message);
     setStatus("Error: " + message, "error");
   },
 });
 
-// --- Index selection ---------------------------------------------------------
 // Click to download (uncached) or select a local .idx (failed). Drop works in either state
 indexStatus.addEventListener("click", () => {
   if (isBusy) return;
-  if (indexNeedsDownload) downloadAndLoadIndex();
-  else if (indexFailed) indexInput.click();
+  if (indexState === "needs-download") downloadAndLoadIndex();
+  else if (indexState === "failed") indexInput.click();
 });
 indexStatus.addEventListener("dragover", (e) => {
-  if (!(indexNeedsDownload || indexFailed)) return;
+  if (!indexDroppable()) return;
   e.preventDefault();
   if (!isBusy) indexStatus.classList.add("dragover");
 });
 indexStatus.addEventListener("dragleave", () => indexStatus.classList.remove("dragover"));
 indexStatus.addEventListener("drop", (e) => {
-  if (!(indexNeedsDownload || indexFailed)) return;
+  if (!indexDroppable()) return;
   e.preventDefault();
   indexStatus.classList.remove("dragover");
   if (isBusy) return;
@@ -240,232 +273,61 @@ async function loadIndexFile(file) {
     );
     return;
   }
-  indexLoaded = false;
-  indexFailed = false;
-  indexNeedsDownload = false;
   indexFilename = file.name;
   indexFile = file;
-  indexStatus.classList.remove("loaded", "failed", "needs-download", "dragover");
-  indexRetry.hidden = true;
-  indexDownload.hidden = true;
-  updateUploadEnabled();
-  indexName.textContent = file.name;
-  showIndexLoading("Loading");
+  setIndexState("loading", { name: file.name, info: "Loading" });
   setStatus(`Loading index (${(file.size / 1024 / 1024).toFixed(0)}MB)…`);
   engine.loadIndex(await file.arrayBuffer());
 }
 
-// --- Index auto-download + cache ---------------------------------------------
-// Cache in IndexedDB (handles the ~850 MB blob) for instant offline reloads. The
-// database name predates sssender, and renaming it would force a re-download.
-const IDB_NAME = "updeacon";
-const IDB_STORE = "index";
-
-function openIdxDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function idbRequest(makeReq) {
-  return new Promise((resolve, reject) => {
-    const req = makeReq();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function getCachedIndex(url) {
-  const db = await openIdxDB();
-  try {
-    return await idbRequest(() => db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(url));
-  } finally {
-    db.close();
-  }
-}
-
-async function putCachedIndex(url, blob) {
-  // Ask the browser not to evict this large blob
-  if (navigator.storage?.persist) {
-    try {
-      await navigator.storage.persist();
-    } catch (_) {}
-  }
-  const db = await openIdxDB();
-  try {
-    await idbRequest(() => db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).put(blob, url));
-  } finally {
-    db.close();
-  }
-}
-
-async function clearCachedIndex(url) {
-  const db = await openIdxDB();
-  try {
-    await idbRequest(() => db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).delete(url));
-  } finally {
-    db.close();
-  }
-}
-
-// GC cached indexes other than keepUrl (keyed by URL, else linger forever). Runs on startup
-async function pruneStaleIndexes(keepUrl) {
-  const db = await openIdxDB();
-  try {
-    const store = db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE);
-    const keys = await idbRequest(() => store.getAllKeys());
-    await Promise.all(keys.filter((key) => key !== keepUrl).map((key) => idbRequest(() => store.delete(key))));
-  } finally {
-    db.close();
-  }
-}
-
-function showIndexLoading(label) {
-  indexInfo.textContent = label;
-  indexInfo.classList.add("loading-dots");
-}
-
-function clearIndexLoading() {
-  indexInfo.classList.remove("loading-dots");
-}
-
-async function downloadIndex(url, onProgress) {
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-  const total = Number(resp.headers.get("content-length")) || 0;
-  const reader = resp.body.getReader();
-  const chunks = [];
-  let received = 0;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.length;
-    onProgress(received, total);
-  }
-  return new Blob(chunks);
-}
-
-function showIndexProgress(received, total) {
-  clearIndexLoading();
-  indexProgress.style.display = "";
-  if (total) {
-    const pct = (received / total) * 100;
-    indexProgress.removeAttribute("indeterminate");
-    indexProgress.value = pct;
-    indexInfo.textContent = `${humanBytes(received)} / ${humanBytes(total)} (${pct.toFixed(0)}%)`;
-  } else {
-    indexProgress.removeAttribute("value"); // indeterminate
-    indexInfo.textContent = `${humanBytes(received)} downloaded`;
-  }
-}
-
-function showIndexNeedsDownload() {
-  indexNeedsDownload = true;
-  indexFailed = false;
-  clearIndexLoading();
-  indexProgress.style.display = "none";
-  indexRetry.hidden = true;
-  indexDownload.hidden = false;
-  indexDownload.classList.remove("pulse-glow");
-  void indexDownload.offsetWidth;
-  indexDownload.classList.add("pulse-glow");
-  indexName.textContent = ""; // download button stands in for the title
-  indexInfo.textContent = "No Deacon index cached. Click to download or drop an .idx/.pidx file.";
-  indexStatus.classList.remove("loaded", "failed");
-  indexStatus.classList.add("needs-download");
-  setStatus("");
-  updateUploadEnabled();
-}
-
-function showIndexFailure(err) {
-  console.error(err);
-  indexFailed = true;
-  indexNeedsDownload = false;
-  clearIndexLoading();
-  indexProgress.style.display = "none";
-  indexName.textContent = INDEX_DISPLAY_NAME;
-  indexInfo.textContent =
-    `Download failed (${err?.message || err}). ` +
-    "Click to select a local .idx/.pidx file, drag one here, or retry.";
-  indexRetry.hidden = false;
-  indexDownload.hidden = true;
-  indexStatus.classList.remove("loaded", "needs-download");
-  indexStatus.classList.add("failed");
-  setStatus("");
-  updateUploadEnabled();
-}
-
-// Load cached index if present, else prompt to download (no automatic download)
+// Load the cached index, else prompt to download
 async function initIndex() {
   indexFile = null;
   indexFilename = INDEX_FILENAME;
-  indexFailed = false;
-  indexNeedsDownload = false;
-  indexName.textContent = INDEX_DISPLAY_NAME;
-  indexRetry.hidden = true;
-  indexDownload.hidden = true;
-  indexStatus.classList.remove("failed", "needs-download", "loaded", "dragover");
-  pruneStaleIndexes(INDEX_URL).catch((e) => console.warn("updeacon: failed to prune stale cached indexes", e));
+  setIndexState("loading");
+  pruneStaleIndexes().catch((e) => console.warn("updeacon: failed to prune stale cached indexes", e));
   try {
     const cached = await getCachedIndex(INDEX_URL);
-    if (cached) {
-      showIndexLoading("Loading cached index");
-      setStatus("Loading cached index…");
-      engine.loadIndex(await cached.arrayBuffer());
-      return;
-    }
-    showIndexNeedsDownload();
+    if (!cached) return showIndexNeedsDownload();
+    setIndexState("loading", { info: "Loading cached index" });
+    setStatus("Loading cached index…");
+    engine.loadIndex(await cached.arrayBuffer());
   } catch (err) {
-    showIndexFailure(err);
+    console.error(err);
+    showIndexFailure(`Couldn't read the index cache (${err?.message || err})`);
   }
 }
 
 async function downloadAndLoadIndex() {
   indexFile = null;
-  indexNeedsDownload = false;
-  indexFailed = false;
   indexFilename = INDEX_FILENAME;
-  indexName.textContent = INDEX_DISPLAY_NAME; // restore title (needs-download hid it)
-  indexRetry.hidden = true;
-  indexDownload.hidden = true;
-  indexStatus.classList.remove("needs-download", "failed", "dragover");
-  updateUploadEnabled();
+  setIndexState("downloading");
+  setStatus("Downloading index…");
   try {
-    indexInfo.textContent = "Downloading index…";
-    setStatus("Downloading index…");
     showIndexProgress(0, 0);
     const blob = await downloadIndex(INDEX_URL, showIndexProgress);
     await putCachedIndex(INDEX_URL, blob).catch((e) => console.warn("updeacon: failed to cache index", e));
-    indexProgress.style.display = "none";
-    showIndexLoading("Loading index");
+    setIndexState("loading", { info: "Loading index" });
     setStatus("Loading index…");
     engine.loadIndex(await blob.arrayBuffer());
   } catch (err) {
-    showIndexFailure(err);
+    console.error(err);
+    showIndexFailure(`Download failed (${err?.message || err})`);
   }
 }
 
-indexDownload.addEventListener("click", (e) => {
-  e.stopPropagation(); // don't double-trigger via the panel's click handler
-  downloadAndLoadIndex();
-});
-
-indexRetry.addEventListener("click", (e) => {
-  e.stopPropagation(); // don't trigger the panel's click handler
-  downloadAndLoadIndex();
-});
+for (const button of [indexDownload, indexRetry]) {
+  button.addEventListener("click", (e) => {
+    e.stopPropagation(); // the panel's own click handler would download again
+    downloadAndLoadIndex();
+  });
+}
 
 purgeIndexEl.addEventListener("click", async (e) => {
   e.preventDefault();
   if (isBusy) return;
   // Update the UI first, as Safari's IndexedDB can stall on delete
-  indexLoaded = false;
   engine.reset();
-  updateUploadEnabled();
   showIndexNeedsDownload();
   setStatus("Clearing index cache…");
   try {
@@ -477,7 +339,6 @@ purgeIndexEl.addEventListener("click", async (e) => {
   }
 });
 
-// --- Filter only -------------------------------------------------------------
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -489,7 +350,7 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-const FILTERING = { verb: "filtering", past: "filtered" }; // for the run view
+const FILTERING = { verb: "filtering", past: "filtered" };
 
 const readsText = (verb) => (_item, { stats }) => {
   const readsIn = Number(stats?.readsIn || 0);
@@ -497,7 +358,7 @@ const readsText = (verb) => (_item, { stats }) => {
   return readsIn ? `done. ${readsOut.toLocaleString()}/${readsIn.toLocaleString()} reads ${verb}` : "done";
 };
 
-// Filter locally and download: no S3, no credentials
+// Filter and download locally, no S3
 async function filterOnly() {
   const groups = selectedFiles;
   if (!groups.length) return;
@@ -516,7 +377,7 @@ async function filterOnly() {
     doneText: readsText("kept"),
   });
   let totalBasesIn = 0;
-  const skipped = []; // groups whose input Deacon couldn't read
+  const skipped = []; // unreadable groups
   let current = 0;
   try {
     for (let i = 0; i < groups.length; i++) {
@@ -526,11 +387,10 @@ async function filterOnly() {
       view.onGroupStart(i);
       let result;
       let blobs = null;
-      // As in uploads: one more go after a crash, then skip
+      // Retry once after a crash, then skip, as in uploads
       for (let attempt = 1; ; attempt++) {
         result = { stats: null };
-        // Response.blob() drains in memory. A pair drains together, as the worker
-        // interleaves them. The signal lets Cancel stop mid-file
+        // Mates drain together, as the worker interleaves them. signal lets Cancel stop mid-file
         const outputs = engine.filterGroup(group, {
           onProgress: (m) => view.onTransformProgress(i, m),
           onStats: (stats) => (result.stats = stats),
@@ -583,7 +443,6 @@ async function filterOnly() {
   }
 }
 
-// --- Filter & upload ---------------------------------------------------------
 async function uploadAll() {
   const groups = selectedFiles;
   if (!groups.length) return;
@@ -610,12 +469,11 @@ async function uploadAll() {
     busyIndicator,
     cancel,
   });
-  updateUploadEnabled(); // lock the buttons until the next selection
+  updateUploadEnabled();
 }
 
 uploadBtn.addEventListener("click", uploadAll);
 filterBtn.addEventListener("click", filterOnly);
 
-// --- Startup -----------------------------------------------------------------
-// Start index load in parallel with WASM init (bytes queue until READY). Last, so all decls exist
+// The engine holds the index until WASM is ready
 initIndex();

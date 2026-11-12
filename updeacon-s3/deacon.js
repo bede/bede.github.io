@@ -1,63 +1,60 @@
-// Deacon filtering for updeacon: drives worker.js (WASM) off the main thread and
-// exposes it as an sssender transform. Filter params are FILTER_DEFAULTS
-// (deplete mode, panhuman thresholds).
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=c0c6c58";
-import { relativePath } from "./sssender/core/select.js?v=c0c6c58";
-import { VERSION } from "./version.js?v=c0c6c58";
+// Deacon filtering on a worker, plus an sssender transform for updeacon-s3
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=3c29449-dirty-20261112164946";
+import { relativePath } from "./sssender/core/select.js?v=3c29449-dirty-20261112164946";
+import { VERSION } from "./version.js?v=3c29449-dirty-20261112164946";
 
-const ASSET_VERSION = "c0c6c58";
+const ASSET_VERSION = "3c29449-dirty-20261112164946";
 
-// Filtered output is always gzip, so uncompressed inputs get a .gz suffix to keep the name honest
+// Output is always gzip
 const GZ_RE = /\.gz$/i;
 export const gzName = (name) => (GZ_RE.test(name) ? name : name + ".gz");
 
-// A filter failure means a bad input (corrupt gzip, not FASTA/Q, unreadable), so skip the file
+// Filter failures mean bad input (corrupt gzip, not FASTA/Q), so skip the file
 function filterError(message) {
   const err = new Error(message);
   err.kind = "input";
   return err;
 }
 
-// No progress this long on a pending PULL means a wedged worker (it reports every 150 ms)
+// No progress this long on a pending PULL means a wedged worker
 export const FILTER_STALL_MS = 3 * 60 * 1000;
 
 function crashError(stalled) {
   const err = new Error(
     stalled
       ? "Deacon stopped responding while filtering this file."
-      : "Deacon crashed while filtering this file; it may have run out of memory."
+      : "Deacon crashed while filtering this file. It may have run out of memory."
   );
-  err.kind = "input"; // skipped if it recurs, likely too big for the browser
-  err.retry = true; // one more go with a fresh worker
+  err.kind = "input"; // skipped if it recurs
+  err.retry = true; // once, with a fresh worker
   return err;
 }
 
-// One worker, one active filter at a time. onIndexLoaded(info, { k, w }) and
-// onError(message) report on the index. Errors during a filter reject its stream.
-//
-// On a crash (worker.onerror) or stall (FILTER_STALL_MS) the active filter fails with a
-// crashError. A new worker reloads the index from reloadIndex() -> ArrayBuffer, as the
-// old bytes were transferred away. Filters started meanwhile wait for it.
+// One worker, one filter at a time. onIndexLoaded(info, { k, w }) and onError(message)
+// report on the index, and filter errors reject the filter's streams. params override
+// FILTER_DEFAULTS. A crash or stall fails the active filter with crashError, then a new
+// worker reloads the index from reloadIndex() -> ArrayBuffer. Filters wait for it
 export function createDeaconEngine({
   onIndexLoaded,
   onError,
   reloadIndex,
+  params = {},
   stallMs = FILTER_STALL_MS,
   makeWorker = () => new Worker(new URL(`./worker.js?v=${ASSET_VERSION}`, import.meta.url), { type: "module" }),
   setTimerFn = setTimeout,
   clearTimerFn = clearTimeout,
 }) {
   let worker = null;
-  let ready = false; // worker has finished WASM init (MSG.READY)
-  let pendingIndex = null; // index bytes waiting for READY
-  let indexLoaded = false; // an index has loaded at least once, so a crash can recover
-  let restarting = null; // Promise while a replacement worker reloads the index
+  let ready = false; // WASM initialised
+  let pendingIndex = null; // held until READY
+  let indexLoaded = false; // so a crash can reload it
+  let restarting = null; // Promise while a new worker reloads the index
   let restartLoaded = null; // { resolve, reject } for that reload
 
   // Route worker replies to the active filter's handlers
-  let onOutputBatch = null; // next OUTPUT_CHUNK_BATCH
-  let onProgress = null; // PROGRESS for the active filter
-  let onFilterError = null; // abort the active pull, with an Error
+  let onOutputBatch = null;
+  let onProgress = null;
+  let onFilterError = null;
 
   let watchdog = null;
   const disarm = () => {
@@ -76,7 +73,7 @@ export function createDeaconEngine({
 
   const post = (msg, transfer) => worker.postMessage(msg, transfer || []);
   const pull = () => {
-    arm(); // only a filter that's been asked for output can stall
+    arm(); // only a pending pull can stall
     post({ type: MSG.PULL });
   };
 
@@ -85,7 +82,7 @@ export function createDeaconEngine({
     switch (m.type) {
       case MSG.READY:
         ready = true;
-        // Hand over the index if it finished loading first
+        // Index arrived before READY
         if (pendingIndex) {
           const buf = pendingIndex;
           pendingIndex = null;
@@ -99,7 +96,7 @@ export function createDeaconEngine({
           restartLoaded = null;
           break;
         }
-        // Parse k and w from info ("k=31, w=61 (… minimizers)") for summaries
+        // info: "k=31, w=61 (… minimizers)"
         const kw = /k=(\d+),\s*w=(\d+)/.exec(m.info || "");
         onIndexLoaded(m.info, { k: kw ? Number(kw[1]) : null, w: kw ? Number(kw[2]) : null });
         break;
@@ -121,8 +118,6 @@ export function createDeaconEngine({
         }
         // A pull after its filter failed is harmless
         else if (m.message !== "No active filter session") onError(m.message);
-        break;
-      default:
         break;
     }
   }
@@ -152,10 +147,9 @@ export function createDeaconEngine({
     const dead = worker;
     dead.onmessage = dead.onerror = dead.onmessageerror = null;
     dead.terminate();
-    console.warn(`updeacon: Deacon worker ${stalled ? "stalled" : "crashed"}; restarting it`);
+    console.warn(`updeacon: Deacon worker ${stalled ? "stalled" : "crashed"}, restarting it`);
     spawn();
     if (!indexLoaded) {
-      // Nothing to recover without a loaded index
       onError(stalled ? "Deacon stopped responding." : "Deacon crashed while starting.");
     } else if (!restarting) {
       restarting = (async () => {
@@ -164,17 +158,18 @@ export function createDeaconEngine({
           restartLoaded = { resolve, reject };
           loadIndex(buffer);
         });
-      })()
-        .catch((cause) => {
-          // Every later file would fail too, so stop the run
+      })().then(
+        () => {
+          restarting = null;
+        },
+        (cause) => {
+          // Stays rejected until the page loads an index
           const err = new Error(`Couldn't reload the Deacon index after a crash: ${cause?.message || cause}`, { cause });
           err.kind = "storage";
           throw err;
-        })
-        .finally(() => {
-          restarting = null;
-        });
-      restarting.catch(() => {}); // reported by the next filter waiting on it
+        }
+      );
+      restarting.catch(() => {}); // reported to waiting filters
     }
     fail?.(crashError(stalled));
   }
@@ -182,61 +177,25 @@ export function createDeaconEngine({
   // Filters wait out a restart, and a failed reload rejects them
   const whenReady = () => restarting ?? Promise.resolve();
 
-  // ReadableStream of one file's filtered bytes, pull-driven so the consumer paces the filter
-  function filterSingle(file, hooks) {
-    return new ReadableStream({
-      async start() {
-        await whenReady();
-        onProgress = hooks.onProgress;
-        post({ type: MSG.FILTER, data: { file } });
-      },
-      pull(controller) {
-        return new Promise((resolve, reject) => {
-          onFilterError = (err) => {
-            clearHandlers();
-            reject(err);
-          };
-          onOutputBatch = (m) => {
-            onOutputBatch = null;
-            for (const buf of m.chunks) controller.enqueue(new Uint8Array(buf));
-            if (m.done) {
-              onFilterError = null;
-              onProgress = null;
-              hooks.onStats?.(m.stats, m.elapsed);
-              controller.close();
-            }
-            resolve();
-          };
-          pull();
-        });
-      },
-      cancel() {
-        // Drop handlers. The worker frees its session on the next FILTER
-        disarm();
-        clearHandlers();
-        onProgress = null;
-      },
-    });
-  }
+  // -> [{ stream }] per file, sharing one session. Each pulls until its queue has data, so
+  // the consumer paces the filter. Calls hooks.onProgress(msg) and hooks.onStats(stats, elapsed)
+  function filterGroup(group, hooks = {}) {
+    const queues = group.files.map(() => []);
+    let done = false;
+    let pulling = null;
+    let started = null;
 
-  // Two streams fed by one interleaved worker session. Each pulls until its mate's
-  // queue has data or the session ends
-  function filterPaired([file1, file2], hooks) {
-    const state = { queues: { r1: [], r2: [] }, done: false, pulling: null, started: null };
-
-    const pump = () => {
-      if (state.done || state.pulling) return state.pulling || Promise.resolve();
-      state.pulling = new Promise((resolve, reject) => {
+    const pump = () =>
+      (pulling ??= new Promise((resolve, reject) => {
         onFilterError = (err) => {
           clearHandlers();
           reject(err);
         };
         onOutputBatch = (m) => {
           clearHandlers();
-          for (const buf of m.chunksR1 || []) state.queues.r1.push(new Uint8Array(buf));
-          for (const buf of m.chunksR2 || []) state.queues.r2.push(new Uint8Array(buf));
+          m.chunks.forEach((bufs, i) => queues[i].push(...bufs.map((b) => new Uint8Array(b))));
           if (m.done) {
-            state.done = true;
+            done = true;
             onProgress = null;
             hooks.onStats?.(m.stats, m.elapsed);
           }
@@ -244,51 +203,46 @@ export function createDeaconEngine({
         };
         pull();
       }).finally(() => {
-        state.pulling = null;
-      });
-      return state.pulling;
-    };
-
-    // Both mates' start() share one FILTER
-    const begin = () =>
-      (state.started ??= whenReady().then(() => {
-        onProgress = hooks.onProgress;
-        post({ type: MSG.FILTER, data: { file1, file2 } });
+        pulling = null;
       }));
 
-    const makeStream = (mate) =>
-      new ReadableStream({
-        start: begin,
+    // Streams share one FILTER
+    const start = () =>
+      (started ??= whenReady().then(() => {
+        onProgress = hooks.onProgress;
+        post({ type: MSG.FILTER, data: { ...params, files: group.files } });
+      }));
+
+    return queues.map((queue) => ({
+      stream: new ReadableStream({
+        start,
         async pull(controller) {
-          while (!state.queues[mate].length && !state.done) await pump();
-          const chunk = state.queues[mate].shift();
-          if (chunk) controller.enqueue(chunk);
-          else if (state.done) controller.close();
+          while (!queue.length && !done) await pump();
+          if (queue.length) controller.enqueue(queue.shift());
+          else controller.close();
         },
         cancel() {
+          // The worker frees its session on the next FILTER
           disarm();
           clearHandlers();
           onProgress = null;
         },
-      });
-
-    return [{ stream: makeStream("r1") }, { stream: makeStream("r2") }];
+      }),
+    }));
   }
 
   spawn();
 
   return {
-    loadIndex,
+    loadIndex(buffer) {
+      restarting = null; // a fresh index clears a failed reload
+      loadIndex(buffer);
+    },
     reset() {
       indexLoaded = false;
       post({ type: MSG.RESET });
     },
-    // -> [{ stream }] for a single file, [{ stream }, { stream }] for an R1/R2 pair.
-    // Calls hooks.onProgress(msg) and hooks.onStats(stats, elapsed)
-    filterGroup(group, hooks = {}) {
-      if (group.files.length === 2) return filterPaired(group.files, hooks);
-      return [{ stream: filterSingle(group.files[0], hooks) }];
-    },
+    filterGroup,
   };
 }
 
@@ -297,7 +251,7 @@ export function deaconTransform({ engine, indexMeta }) {
   return {
     name: "deacon",
     outputName: gzName,
-    concurrency: 1, // one worker, one active filter
+    concurrency: 1, // one worker
     start: (group, hooks) => engine.filterGroup(group, hooks),
     extras: (item, result) => [
       {
@@ -323,7 +277,7 @@ export function logFilterParams({ filename, k, w }) {
   });
 }
 
-// Deacon-style JSON summary mirroring the CLI schema. Paired groups fill input2/output2
+// Summary in the deacon CLI's JSON schema
 function buildSummary({ item, stats, elapsed, index }) {
   const [input, input2 = null] = item.files.map(relativePath);
   const seqsIn = Number(stats?.readsIn || 0);

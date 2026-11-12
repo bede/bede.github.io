@@ -5,15 +5,13 @@ export const MSG = Object.freeze({
   LOAD_INDEX: "load_index",
   INDEX_LOADED: "index_loaded",
   RESET: "reset",
-  RESET_DONE: "reset_done",
   FILTER: "filter",
   PULL: "pull",
   PROGRESS: "progress",
-  STAGE: "stage",
   OUTPUT_CHUNK_BATCH: "output_chunk_batch",
 });
 
-// Deacon filter params (deplete mode, panhuman defaults), shared by worker and main thread
+// updeacon-s3 filter params (deplete, panhuman defaults)
 export const FILTER_DEFAULTS = Object.freeze({
   deplete: true,
   absThreshold: 2,
@@ -23,8 +21,8 @@ export const FILTER_DEFAULTS = Object.freeze({
   discardQuality: false,
 });
 
-// sapiometer thresholds (-a 1 -r 0, deplete): a read is human on a single k-mer hit
-export const DETECT_DEFAULTS = Object.freeze({
+// sapiometer thresholds (-a 1 -r 0, deplete). A read is human on a single minimizer hit
+export const CHECK_DEFAULTS = Object.freeze({
   deplete: true,
   absThreshold: 1,
   relThreshold: 0,
