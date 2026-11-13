@@ -1,7 +1,7 @@
 // One toggle per file type, shown when a selection has several. onToggle(key):
 // the page reselects (selectFiles with `disabled`) and re-renders
-import { describeType } from "../core/select.js?v=b7c2564";
-import { humanBytes } from "./ui.js?v=b7c2564";
+import { describeType } from "../core/select.js?v=f40b3fc";
+import { humanBytes } from "./ui.js?v=f40b3fc";
 
 export function renderTypeToggles(el, types, { onToggle, disabled = false }) {
   el.replaceChildren();

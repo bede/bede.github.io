@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>updeacon-s3 magic link</title>
-<link rel="stylesheet" href="./sssender/ui/fonts.css?v=b7c2564">
-<link rel="stylesheet" href="./sssender/ui/style.css?v=b7c2564">
+<link rel="stylesheet" href="./sssender/ui/fonts.css?v=f40b3fc">
+<link rel="stylesheet" href="./sssender/ui/style.css?v=f40b3fc">
 </head>
 <body data-root="updeacon/">
 <h1>updeacon-s3</h1>
@@ -49,6 +49,13 @@
       <input type="number" id="max-gb" min="0.1" max="5" step="0.1" value="5">
     </div>
   </div>
+  <div class="field">
+    <label for="index">Deacon index</label>
+    <select id="index" data-link-option="index">
+      <option value="panhuman-1.k31w15.pidx" selected>panhuman-1.k31w15 (1.7GB, default)</option>
+      <option value="panhuman-1.k31w25c9b16.pidx">panhuman-1.k31w25c9b16 (530MB)</option>
+    </select>
+  </div>
 </div>
 
 <div class="actions">
@@ -66,6 +73,6 @@
 
 <p class="info footer-links"><a href="./">back to updeacon-s3</a></p>
 
-<script type="module" src="./sssender/ui/mint-page.js?v=b7c2564"></script>
+<script type="module" src="./sssender/ui/mint-page.js?v=f40b3fc"></script>
 </body>
 </html>

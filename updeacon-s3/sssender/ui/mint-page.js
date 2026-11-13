@@ -1,8 +1,9 @@
 // Mint page for any app on sssender. <body data-root="app/"> names the app's upload
-// root (required). The link opens the app in this directory
-import { checkRoot, mintMagicLink } from "../core/mint.js?v=b7c2564";
-import { normaliseEndpoint } from "../core/uploaders.js?v=b7c2564";
-import { humanDate } from "./ui.js?v=b7c2564";
+// root (required). The link opens the app in this directory. Form controls with
+// data-link-option="key" become the link's options, read back by the app
+import { checkRoot, mintMagicLink } from "../core/mint.js?v=f40b3fc";
+import { normaliseEndpoint } from "../core/uploaders.js?v=f40b3fc";
+import { humanDate } from "./ui.js?v=f40b3fc";
 
 const $ = (id) => document.getElementById(id);
 const root = checkRoot(document.body.dataset.root);
@@ -15,6 +16,10 @@ async function mint() {
     return;
   }
   const maxBytes = Math.floor(Number(val("max-gb")) * 1024 ** 3);
+  const options = {};
+  for (const el of document.querySelectorAll("#mint-form [data-link-option]")) {
+    if (el.value) options[el.dataset.linkOption] = el.value;
+  }
   try {
     const { link, prefix, expiresAt } = await mintMagicLink({
       endpoint: normaliseEndpoint($("server").value),
@@ -26,6 +31,7 @@ async function mint() {
       days: Number(val("days")),
       maxBytes,
       baseUrl: new URL("./", location.href).href,
+      options,
     });
     $("result-dest").textContent = `${val("bucket")}/${prefix.replace(/\/$/, "")}`;
     $("result-note").textContent = `Expires ${humanDate(expiresAt.getTime())}.`;
@@ -43,6 +49,6 @@ $("copy-btn").addEventListener("click", () =>
   navigator.clipboard.writeText($("result-link").value).catch(() => $("result-link").select())
 );
 // A changed input makes the shown link stale
-for (const el of document.querySelectorAll("#mint-form input")) {
+for (const el of document.querySelectorAll("#mint-form input, #mint-form select")) {
   el.addEventListener("input", () => ($("result").hidden = true));
 }

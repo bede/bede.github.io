@@ -4,13 +4,13 @@
 //   selection  dir-zone, dir-input, dir-summary, type-toggles
 //   run        progress-wrap, run-progress, run-label, done-dialog (optional, see showDoneDialog)
 // Pages keep readiness, buttons and transform.
-import { humanBytes, plural } from "../core/format.js?v=b7c2564";
-import { parseMagicLink } from "../core/link.js?v=b7c2564";
-import { runUpload } from "../core/pipeline.js?v=b7c2564";
-import { selectFiles } from "../core/select.js?v=b7c2564";
-import { makeLinkUploader } from "../core/uploaders.js?v=b7c2564";
-import { makeRunView } from "./run-view.js?v=b7c2564";
-import { renderTypeToggles } from "./types.js?v=b7c2564";
+import { humanBytes, plural } from "../core/format.js?v=f40b3fc";
+import { parseMagicLink } from "../core/link.js?v=f40b3fc";
+import { runUpload } from "../core/pipeline.js?v=f40b3fc";
+import { selectFiles } from "../core/select.js?v=f40b3fc";
+import { makeLinkUploader } from "../core/uploaders.js?v=f40b3fc";
+import { makeRunView } from "./run-view.js?v=f40b3fc";
+import { renderTypeToggles } from "./types.js?v=f40b3fc";
 import {
   bindFilePicker,
   formatError,
@@ -18,7 +18,7 @@ import {
   renderLinkError,
   showDoneDialog,
   summariseSelection,
-} from "./ui.js?v=b7c2564";
+} from "./ui.js?v=f40b3fc";
 
 const $ = (id) => document.getElementById(id);
 

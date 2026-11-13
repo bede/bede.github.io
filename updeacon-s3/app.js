@@ -1,20 +1,23 @@
 // updeacon-s3: filter fa/fq with Deacon in the browser, then upload via sssender
-import { DEACON_VERSION } from "./protocol.js?v=b7c2564";
-import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=b7c2564";
+import { DEACON_VERSION } from "./protocol.js?v=f40b3fc";
+import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=f40b3fc";
 import {
-  FILTER_INDEX_URL as INDEX_URL,
-  clearCachedIndex,
+  DEFAULT_FILTER_INDEX,
+  FILTER_INDEXES,
+  clearCachedIndexes,
   downloadIndex,
+  filterIndexParams,
+  filterIndexUrl,
   getCachedIndex,
   pruneStaleIndexes,
   putCachedIndex,
-} from "./index-cache.js?v=b7c2564";
-import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=b7c2564";
-import { VERSION, BUILD_COMMIT } from "./version.js?v=b7c2564";
-import { purgeStaleSpools } from "./sssender/core/spool.js?v=b7c2564";
-import { findOversizeFiles } from "./sssender/core/pipeline.js?v=b7c2564";
-import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=b7c2564";
-import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=b7c2564";
+} from "./index-cache.js?v=f40b3fc";
+import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=f40b3fc";
+import { VERSION, BUILD_COMMIT } from "./version.js?v=f40b3fc";
+import { purgeStaleSpools } from "./sssender/core/spool.js?v=f40b3fc";
+import { findOversizeFiles } from "./sssender/core/pipeline.js?v=f40b3fc";
+import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=f40b3fc";
+import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=f40b3fc";
 import {
   bindCredentialForm,
   bindUploadName,
@@ -25,16 +28,23 @@ import {
   plural,
   setButtonDisabled,
   summariseSelection,
-} from "./sssender/ui/ui.js?v=b7c2564";
+} from "./sssender/ui/ui.js?v=f40b3fc";
 
 const APP = "updeacon";
 const ROOT = "updeacon/"; // matches mint.html's data-root
 const SPOOL_DIR = "updeacon-spool"; // renaming would orphan old spools
 const MAX_INDEX_BYTES = 2 * 1024 * 1024 * 1024;
-const INDEX_FILENAME = INDEX_URL.split("/").pop();
 const INDEX_DISPLAY_NAME = "Index: panhuman-1";
 
-const { link: LINK, linkError } = readMagicLink();
+// A magic link may choose the index. The page never says which
+function chooseIndex({ link, linkError }) {
+  const filename = link?.options?.index ?? DEFAULT_FILTER_INDEX;
+  if (Object.hasOwn(FILTER_INDEXES, filename)) return { link, linkError, filename };
+  const unknown = "Magic link names an unknown index. Ask whoever sent it for a new one.";
+  return { link: null, linkError: unknown, filename: DEFAULT_FILTER_INDEX };
+}
+const { link: LINK, linkError, filename: INDEX_FILENAME } = chooseIndex(readMagicLink());
+const INDEX_URL = filterIndexUrl(INDEX_FILENAME);
 
 const $ = (id) => document.getElementById(id);
 const indexStatus = $("index-status");
@@ -52,6 +62,7 @@ const runProgress = $("run-progress");
 const runLabel = $("run-label");
 const purgeIndexEl = $("purge-index");
 for (const a of document.querySelectorAll(".index-link")) a.href = INDEX_URL;
+indexDownload.textContent = `Download index panhuman-1 (${humanBytes(FILTER_INDEXES[INDEX_FILENAME].size)})`;
 
 const setStatus = makeStatus($("status"));
 const uploadName = bindUploadName({ prefixEl: $("name-prefix"), inputEl: $("run-name") });
@@ -223,6 +234,8 @@ function showIndexProgress(received, total) {
 }
 
 const engine = createDeaconEngine({
+  // Magic links select only the index; its thresholds are looked up here on the client.
+  params: () => filterIndexParams(indexFilename),
   // After a crash, as the dead worker had the bytes
   async reloadIndex() {
     const source = indexFile ?? (await getCachedIndex(INDEX_URL));
@@ -331,10 +344,10 @@ purgeIndexEl.addEventListener("click", async (e) => {
   showIndexNeedsDownload();
   setStatus("Clearing index cache…");
   try {
-    await clearCachedIndex(INDEX_URL);
+    await clearCachedIndexes();
     setStatus("Index cache cleared");
   } catch (err) {
-    console.warn("updeacon: failed to clear cached index", err);
+    console.warn("updeacon: failed to clear cached indexes", err);
     setStatus("Couldn't clear the index cache: " + (err?.message || err), "error");
   }
 });
@@ -352,17 +365,17 @@ function downloadBlob(blob, filename) {
 
 const FILTERING = { verb: "filtering", past: "filtered" };
 
-const readsText = (verb) => (_item, { stats }) => {
-  const readsIn = Number(stats?.readsIn || 0);
-  const readsOut = Number(stats?.readsOut || 0);
-  return readsIn ? `done. ${readsOut.toLocaleString()}/${readsIn.toLocaleString()} reads ${verb}` : "done";
+const sequencesText = (verb) => (_item, { stats }) => {
+  const seqsIn = Number(stats?.readsIn || 0);
+  const seqsOut = Number(stats?.readsOut || 0);
+  return seqsIn ? `done. ${seqsOut.toLocaleString()}/${seqsIn.toLocaleString()} sequences ${verb}` : "done";
 };
 
 // Filter and download locally, no S3
 async function filterOnly() {
   const groups = selectedFiles;
   if (!groups.length) return;
-  logFilterParams(indexMeta());
+  logFilterParams(indexMeta(), engine.getParams());
   const signal = cancel.start();
   setBusy(true);
   setStatus("Filtering…");
@@ -374,7 +387,7 @@ async function filterOnly() {
     rows: fileRows,
     groups,
     transform: FILTERING,
-    doneText: readsText("kept"),
+    doneText: sequencesText("kept"),
   });
   let totalBasesIn = 0;
   const skipped = []; // unreadable groups
@@ -448,7 +461,7 @@ async function uploadAll() {
   if (!groups.length) return;
   // Own timestamped dir inside the prefix, so a reused link never overwrites
   const keyBase = (LINK ? LINK.prefix : ROOT) + uploadName.commit();
-  logFilterParams(indexMeta());
+  logFilterParams(indexMeta(), engine.getParams());
   let totalBasesIn = 0;
   uploadCompleted = await uploadSelection({
     groups,
@@ -459,7 +472,7 @@ async function uploadAll() {
     client: { app: APP, appVersion: VERSION, commit: BUILD_COMMIT, extra: { deacon_version: DEACON_VERSION } },
     spoolDir: SPOOL_DIR,
     rows: fileRows,
-    view: { transform: FILTERING, doneText: readsText("uploaded") },
+    view: { transform: FILTERING, doneText: sequencesText("uploaded") },
     runLabel: "Filtering and uploading",
     describe: describeGroups,
     onGroupDone: (_i, _item, result) => (totalBasesIn += Number(result.stats?.basesIn || 0)),

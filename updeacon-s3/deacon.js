@@ -1,9 +1,9 @@
 // Deacon filtering on a worker, plus an sssender transform for updeacon-s3
-import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=b7c2564";
-import { relativePath } from "./sssender/core/select.js?v=b7c2564";
-import { VERSION } from "./version.js?v=b7c2564";
+import { MSG, FILTER_DEFAULTS, DEACON_VERSION } from "./protocol.js?v=f40b3fc";
+import { relativePath } from "./sssender/core/select.js?v=f40b3fc";
+import { VERSION } from "./version.js?v=f40b3fc";
 
-const ASSET_VERSION = "b7c2564";
+const ASSET_VERSION = "f40b3fc";
 
 // Output is always gzip
 const GZ_RE = /\.gz$/i;
@@ -32,8 +32,9 @@ function crashError(stalled) {
 
 // One worker, one filter at a time. onIndexLoaded(info, { k, w }) and onError(message)
 // report on the index, and filter errors reject the filter's streams. params override
-// FILTER_DEFAULTS. A crash or stall fails the active filter with crashError, then a new
-// worker reloads the index from reloadIndex() -> ArrayBuffer. Filters wait for it
+// FILTER_DEFAULTS; params may be an object or a callback returning the current params.
+// A crash or stall fails the active filter with crashError, then a new worker reloads
+// the index from reloadIndex() -> ArrayBuffer. Filters wait for it
 export function createDeaconEngine({
   onIndexLoaded,
   onError,
@@ -50,6 +51,7 @@ export function createDeaconEngine({
   let indexLoaded = false; // so a crash can reload it
   let restarting = null; // Promise while a new worker reloads the index
   let restartLoaded = null; // { resolve, reject } for that reload
+  const getParams = () => ({ ...FILTER_DEFAULTS, ...(typeof params === "function" ? params() : params) });
 
   // Route worker replies to the active filter's handlers
   let onOutputBatch = null;
@@ -210,7 +212,7 @@ export function createDeaconEngine({
     const start = () =>
       (started ??= whenReady().then(() => {
         onProgress = hooks.onProgress;
-        post({ type: MSG.FILTER, data: { ...params, files: group.files } });
+        post({ type: MSG.FILTER, data: { ...getParams(), files: group.files } });
       }));
 
     return queues.map((queue) => ({
@@ -243,6 +245,7 @@ export function createDeaconEngine({
       post({ type: MSG.RESET });
     },
     filterGroup,
+    getParams,
   };
 }
 
@@ -256,29 +259,30 @@ export function deaconTransform({ engine, indexMeta }) {
     extras: (item, result) => [
       {
         key: `${item.keys[0]}.deacon.json`,
-        body: new Blob([JSON.stringify(buildSummary({ item, ...result, index: indexMeta() }), null, 2)], {
-          type: "application/json",
-        }),
+        body: new Blob(
+          [JSON.stringify(buildSummary({ item, ...result, index: indexMeta(), params: engine.getParams() }), null, 2)],
+          { type: "application/json" }
+        ),
         contentType: "application/json",
       },
     ],
   };
 }
 
-export function logFilterParams({ filename, k, w }) {
+export function logFilterParams({ filename, k, w }, params) {
   console.log("updeacon: deacon filter params", {
     index: filename,
     k,
     w,
-    deplete: FILTER_DEFAULTS.deplete,
-    abs_threshold: FILTER_DEFAULTS.absThreshold,
-    rel_threshold: FILTER_DEFAULTS.relThreshold,
-    prefix_length: FILTER_DEFAULTS.prefixLength,
+    deplete: params.deplete,
+    abs_threshold: params.absThreshold,
+    rel_threshold: params.relThreshold,
+    prefix_length: params.prefixLength,
   });
 }
 
 // Summary in the deacon CLI's JSON schema
-function buildSummary({ item, stats, elapsed, index }) {
+function buildSummary({ item, stats, elapsed, index, params }) {
   const [input, input2 = null] = item.files.map(relativePath);
   const seqsIn = Number(stats?.readsIn || 0);
   const seqsOut = Number(stats?.readsOut || 0);
@@ -297,11 +301,11 @@ function buildSummary({ item, stats, elapsed, index }) {
     output2: item.keys[1] ?? null,
     k: index.k,
     w: index.w,
-    abs_threshold: FILTER_DEFAULTS.absThreshold,
-    rel_threshold: FILTER_DEFAULTS.relThreshold,
-    prefix_length: FILTER_DEFAULTS.prefixLength,
-    deplete: FILTER_DEFAULTS.deplete,
-    rename: false,
+    abs_threshold: params.absThreshold,
+    rel_threshold: params.relThreshold,
+    prefix_length: params.prefixLength,
+    deplete: params.deplete,
+    rename: params.rename,
     rename_random: false,
     seqs_in: seqsIn,
     seqs_out: seqsOut,
