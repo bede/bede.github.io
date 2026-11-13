@@ -77,6 +77,15 @@ function base64url(bytes) {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// An app's own settings for the page the link opens, e.g. { index: "…" }. Unsigned,
+// so only for choices the sender could as well make themselves
+function checkOptions(options = {}) {
+  for (const [key, value] of Object.entries(options)) {
+    if (typeof value !== "string") throw new Error(`Link option ${JSON.stringify(key)} must be a string.`);
+  }
+  return options;
+}
+
 // -> { link, prefix, expiresAt, fields }. Checks run in the order the page shows them.
 export async function mintMagicLink({
   endpoint,
@@ -89,6 +98,7 @@ export async function mintMagicLink({
   days = MAX_DAYS,
   maxBytes = POST_MAX_BYTES,
   baseUrl,
+  options = {},
   now = new Date(),
   randomFn,
 }) {
@@ -109,6 +119,7 @@ export async function mintMagicLink({
   if (!(maxBytes > 0 && maxBytes <= POST_MAX_BYTES)) {
     throw new Error("Max file size must be greater than 0 and at most 5 GB.");
   }
+  checkOptions(options);
 
   const start = new Date(Math.floor(now.getTime() / 1000) * 1000);
   const expiresAt = new Date(start.getTime() + days * 86400000);
@@ -134,6 +145,7 @@ export async function mintMagicLink({
   fields["x-amz-signature"] = hex(await hmac(key, fields.policy));
 
   const payload = { v: 1, endpoint: endpoint.replace(/\/+$/, ""), fields };
+  if (Object.keys(options).length) payload.options = options; // inside the payload, out of sight
   const blob = base64url(enc.encode(JSON.stringify(payload)));
   return { link: `${baseUrl.replace(/\/+$/, "")}/#u=${blob}`, prefix, expiresAt, fields };
 }

@@ -1,8 +1,8 @@
 // sssender: upload files as they are, via a magic link or S3 credentials, under sssender/
-import { DEFAULT_ROOT } from "./core/mint.js?v=add5a5d";
-import { findOversizeFiles, rawTransform } from "./core/pipeline.js?v=add5a5d";
-import { SSSENDER_VERSION, SSSENDER_COMMIT } from "./core/version.js?v=add5a5d";
-import { renderFileList } from "./ui/run-view.js?v=add5a5d";
+import { DEFAULT_ROOT } from "./core/mint.js?v=61b67cc";
+import { findOversizeFiles, rawTransform } from "./core/pipeline.js?v=61b67cc";
+import { SSSENDER_VERSION, SSSENDER_COMMIT } from "./core/version.js?v=61b67cc";
+import { renderFileList } from "./ui/run-view.js?v=61b67cc";
 import {
   bindCancel,
   bindSelection,
@@ -10,7 +10,7 @@ import {
   readMagicLink,
   showMode,
   uploadSelection,
-} from "./ui/upload-page.js?v=add5a5d";
+} from "./ui/upload-page.js?v=61b67cc";
 import {
   bindCredentialForm,
   bindUploadName,
@@ -20,7 +20,7 @@ import {
   makeStatus,
   oversizeMessage,
   setButtonDisabled,
-} from "./ui/ui.js?v=add5a5d";
+} from "./ui/ui.js?v=61b67cc";
 
 const APP = "sssender";
 const ROOT = DEFAULT_ROOT; // credential uploads. A link's prefix is fixed by its policy

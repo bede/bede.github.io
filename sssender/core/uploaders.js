@@ -22,18 +22,18 @@
 //
 // credentialTransport: SDK multipart, streamed. A lost connection resends one part, forever.
 // linkTransport: one POST per object, streams spooled first. A retry resends the object.
-import { humanBytes } from "./format.js?v=add5a5d";
-import { linkAccess, linkExpiredError } from "./link.js?v=add5a5d";
-import { regionForEndpoint } from "./mint.js?v=add5a5d";
-import { postObject, postObjectWithRetry } from "./post.js?v=add5a5d";
-import { onlineNow, retryDelayMs, retryUntilDone } from "./retry.js?v=add5a5d";
+import { humanBytes } from "./format.js?v=61b67cc";
+import { linkAccess, linkExpiredError } from "./link.js?v=61b67cc";
+import { regionForEndpoint } from "./mint.js?v=61b67cc";
+import { postObject, postObjectWithRetry } from "./post.js?v=61b67cc";
+import { onlineNow, retryDelayMs, retryUntilDone } from "./retry.js?v=61b67cc";
 import {
   DEFAULT_SPOOL_DIR,
   spoolToFile,
   spoolName,
   releaseSpool,
   prepareSpoolStorage,
-} from "./spool.js?v=add5a5d";
+} from "./spool.js?v=61b67cc";
 
 const sum = (ns) => ns.reduce((a, b) => a + b, 0);
 const isBlob = (b) => typeof Blob !== "undefined" && b instanceof Blob;
@@ -272,7 +272,7 @@ export function credentialTransport({
   requestTimeoutMs = PART_TIMEOUT_MS, // per request: a part or a small object, never a whole file
   setTimerFn = setTimeout,
   clearTimerFn = clearTimeout,
-  loadSdk = () => import("../vendor/aws-sdk.js?v=add5a5d"), // the token busts a cached SDK after an update
+  loadSdk = () => import("../vendor/aws-sdk.js?v=61b67cc"), // the token busts a cached SDK after an update
   retryOptions = {}, // test hooks for patientRetryStrategy
 }) {
   let sdk = null;

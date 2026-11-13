@@ -34,8 +34,9 @@ body { counter-reset: section; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-bottom: 1rem; }
 .field-row .field { margin-bottom: 0; }
 .field label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; }
-.field input { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #ccc; font-family: var(--mono); font-size: 0.9rem; }
-.field input:focus { outline: none; border-color: var(--accent); }
+.field input, .field select { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #ccc; font-family: var(--mono); font-size: 0.9rem; }
+.field select { background: #fff; color: inherit; }
+.field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
 .name-input { display: flex; align-items: center; border: 1px solid #ccc; background: #fff; font-family: var(--mono); font-size: 0.9rem; }
 .name-input:focus-within { border-color: var(--accent); }
 .name-input .name-prefix { color: #999; white-space: nowrap; user-select: none; padding: 0.5rem 0 0.5rem 0.6rem; }

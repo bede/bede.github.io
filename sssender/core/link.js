@@ -63,6 +63,10 @@ export function parseMagicLink(hash) {
   }
 
   const { bucket, prefix, maxBytes, expiresAt } = readPolicy(payload.fields.policy);
+  const options = payload.options ?? {};
+  if (typeof options !== "object" || Array.isArray(options) || Object.values(options).some((v) => typeof v !== "string")) {
+    throw new Error("Magic link has malformed options.");
+  }
   return {
     endpoint: payload.endpoint.replace(/\/$/, ""),
     bucket,
@@ -70,6 +74,7 @@ export function parseMagicLink(hash) {
     maxBytes,
     expiresAt,
     fields: payload.fields,
+    options, // the app's, from the mint page's data-link-option controls
   };
 }
 
