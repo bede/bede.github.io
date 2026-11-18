@@ -1,7 +1,7 @@
 // Magic-link transport: every POST uses XHR, with progress-driven sending and a
 // bounded response wait. A retry re-sends the whole object from byte 0
-import { linkExpiredError } from "./link.js?v=f40b3fc";
-import { abortable, retryUntilDone } from "./retry.js?v=f40b3fc";
+import { linkExpiredError } from "./link.js?v=de2537d";
+import { abortable, retryUntilDone } from "./retry.js?v=de2537d";
 
 // A progressing upload has no duration limit. After its body is sent, allow time
 // for the store/proxy to finish and return the complete response

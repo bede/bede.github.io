@@ -1,6 +1,6 @@
 // updeacon-s3: filter fa/fq with Deacon in the browser, then upload via sssender
-import { DEACON_VERSION } from "./protocol.js?v=f40b3fc";
-import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=f40b3fc";
+import { DEACON_VERSION } from "./protocol.js?v=de2537d";
+import { createDeaconEngine, deaconTransform, gzName, logFilterParams } from "./deacon.js?v=de2537d";
 import {
   DEFAULT_FILTER_INDEX,
   FILTER_INDEXES,
@@ -11,13 +11,13 @@ import {
   getCachedIndex,
   pruneStaleIndexes,
   putCachedIndex,
-} from "./index-cache.js?v=f40b3fc";
-import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=f40b3fc";
-import { VERSION, BUILD_COMMIT } from "./version.js?v=f40b3fc";
-import { purgeStaleSpools } from "./sssender/core/spool.js?v=f40b3fc";
-import { findOversizeFiles } from "./sssender/core/pipeline.js?v=f40b3fc";
-import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=f40b3fc";
-import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=f40b3fc";
+} from "./index-cache.js?v=de2537d";
+import { SEQ_RE, describeGroups, isPaired, pairSequenceFiles } from "./pairing.js?v=de2537d";
+import { VERSION, BUILD_COMMIT } from "./version.js?v=de2537d";
+import { purgeStaleSpools } from "./sssender/core/spool.js?v=de2537d";
+import { findOversizeFiles } from "./sssender/core/pipeline.js?v=de2537d";
+import { makeRunView, renderFileList } from "./sssender/ui/run-view.js?v=de2537d";
+import { bindCancel, bindSelection, readMagicLink, showMode, uploadSelection } from "./sssender/ui/upload-page.js?v=de2537d";
 import {
   bindCredentialForm,
   bindUploadName,
@@ -28,7 +28,7 @@ import {
   plural,
   setButtonDisabled,
   summariseSelection,
-} from "./sssender/ui/ui.js?v=f40b3fc";
+} from "./sssender/ui/ui.js?v=de2537d";
 
 const APP = "updeacon";
 const ROOT = "updeacon/"; // matches mint.html's data-root
@@ -62,7 +62,7 @@ const runProgress = $("run-progress");
 const runLabel = $("run-label");
 const purgeIndexEl = $("purge-index");
 for (const a of document.querySelectorAll(".index-link")) a.href = INDEX_URL;
-indexDownload.textContent = `Download index panhuman-1 (${humanBytes(FILTER_INDEXES[INDEX_FILENAME].size)})`;
+indexDownload.textContent = `Load index panhuman-1 (${humanBytes(FILTER_INDEXES[INDEX_FILENAME].size)})`;
 
 const setStatus = makeStatus($("status"));
 const uploadName = bindUploadName({ prefixEl: $("name-prefix"), inputEl: $("run-name") });
@@ -207,7 +207,7 @@ function showIndexNeedsDownload() {
   // The download button stands in for the title
   setIndexState("needs-download", {
     name: "",
-    info: "No Deacon index cached. Click to download or drop an .idx/.pidx file.",
+    info: "No Deacon index cached. Click to load one or drop an .idx/.pidx file.",
   });
   // Restart the animation
   indexDownload.classList.remove("pulse-glow");

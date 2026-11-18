@@ -58,7 +58,7 @@ export class FilterSession {
         return ret >>> 0;
     }
     /**
-     * @param {Uint8Array} chunk
+     * @param {Uint8Array | number[]} chunk
      * @returns {Uint8Array}
      */
     push_chunk(chunk) {
@@ -139,7 +139,7 @@ export class PairedFilterSession {
         return this;
     }
     /**
-     * @param {Uint8Array} chunk
+     * @param {Uint8Array | number[]} chunk
      * @returns {any}
      */
     push_r1(chunk) {
@@ -152,7 +152,7 @@ export class PairedFilterSession {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * @param {Uint8Array} chunk
+     * @param {Uint8Array | number[]} chunk
      * @returns {any}
      */
     push_r2(chunk) {
@@ -204,13 +204,14 @@ export class WasmIndex {
         }
     }
     /**
-     * @param {Uint8Array} data
+     * @param {Uint8Array | number[]} data
      * @param {number | null} [complexity_threshold]
      */
     constructor(data, complexity_threshold) {
+        const val2 = +(isLikeNone(complexity_threshold) ? Number.MAX_SAFE_INTEGER : Math.fround(complexity_threshold));
         const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmindex_new(ptr0, len0, isLikeNone(complexity_threshold) ? Number.MAX_SAFE_INTEGER : Math.fround(complexity_threshold));
+        const ret = wasm.wasmindex_new(ptr0, len0, val2);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -223,7 +224,7 @@ if (Symbol.dispose) WasmIndex.prototype[Symbol.dispose] = WasmIndex.prototype.fr
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
-        __wbg___wbindgen_throw_41e9ee4f547fc59a: function(arg0, arg1) {
+        __wbg___wbindgen_throw_4c88d8bf264fd984: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
         __wbg_error_757e9472f8410341: function(arg0, arg1) {
@@ -237,28 +238,28 @@ function __wbg_get_imports() {
                 wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
             }
         },
-        __wbg_new_227d7c05414eb861: function() {
+        __wbg_new_bb74001155cb8ca8: function() {
             const ret = new Error();
             return ret;
         },
-        __wbg_new_617a8cdb8bb1130e: function() {
+        __wbg_new_cd4348290afae586: function() {
             const ret = new Object();
             return ret;
         },
-        __wbg_new_from_slice_9a868026ffa4208a: function(arg0, arg1) {
+        __wbg_new_from_slice_b8daf545a41c6aa0: function(arg0, arg1) {
             const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
             return ret;
         },
-        __wbg_set_145a351398b48c65: function() { return handleError(function (arg0, arg1, arg2) {
+        __wbg_set_2793479888329cb6: function() { return handleError(function (arg0, arg1, arg2) {
             const ret = Reflect.set(arg0, arg1, arg2);
             return ret;
         }, arguments); },
-        __wbg_stack_3b0d974bbf31e44f: function(arg0, arg1) {
+        __wbg_stack_575c4e0918581b9c: function(arg0, arg1) {
             const ret = arg1.stack;
             const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+            getDataViewMemory0().setInt32((arg0 >>> 0) + 4 * 1, len1, true);
+            getDataViewMemory0().setInt32((arg0 >>> 0) + 4 * 0, ptr1, true);
         },
         __wbindgen_generic_0000000000000001: function(arg0) {
             // Cast intrinsic for `F64 -> Externref`.
@@ -272,12 +273,11 @@ function __wbg_get_imports() {
         },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
-            const offset = table.grow(4);
             table.set(0, undefined);
-            table.set(offset + 0, undefined);
-            table.set(offset + 1, null);
-            table.set(offset + 2, true);
-            table.set(offset + 3, false);
+            table.set(1024, undefined);
+            table.set(1025, null);
+            table.set(1026, true);
+            table.set(1027, false);
         },
     };
     return {
@@ -322,7 +322,8 @@ function getDataViewMemory0() {
 }
 
 function getStringFromWasm0(ptr, len) {
-    return decodeText(ptr >>> 0, len);
+    ptr = ptr >>> 0;
+    return decodeText(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
 
 let cachedUint8ArrayMemory0 = null;
@@ -396,18 +397,18 @@ function takeFromExternrefTable0(idx) {
     return value;
 }
 
-let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
 cachedTextDecoder.decode();
 const MAX_SAFARI_DECODE_BYTES = 2146435072;
 let numBytesDecoded = 0;
-function decodeText(ptr, len) {
-    numBytesDecoded += len;
+function decodeText(bytes) {
+    numBytesDecoded += bytes.length;
     if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
-        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true });
         cachedTextDecoder.decode();
-        numBytesDecoded = len;
+        numBytesDecoded = bytes.length;
     }
-    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
+    return cachedTextDecoder.decode(bytes);
 }
 
 const cachedTextEncoder = new TextEncoder();
@@ -495,9 +496,17 @@ function initSync(module) {
     return __wbg_finalize_init(instance, module);
 }
 
+let __wbg_init_promise;
 async function __wbg_init(module_or_path) {
     if (wasm !== undefined) return wasm;
+    if (__wbg_init_promise === undefined) {
+        __wbg_init_promise = __wbg_init_once(module_or_path);
+        __wbg_init_promise.catch(() => { __wbg_init_promise = undefined; });
+    }
+    return __wbg_init_promise;
+}
 
+async function __wbg_init_once(module_or_path) {
 
     if (module_or_path !== undefined) {
         if (Object.getPrototypeOf(module_or_path) === Object.prototype) {

@@ -1,4 +1,4 @@
-import { FILTER_DEFAULTS } from "./protocol.js?v=f40b3fc";
+import { FILTER_DEFAULTS } from "./protocol.js?v=de2537d";
 
 // Index download and IndexedDB cache, keyed by URL and shared by both apps.
 // Renaming the database would force a re-download

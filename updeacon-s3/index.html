@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>updeacon-s3</title>
-<link rel="stylesheet" href="./sssender/ui/fonts.css?v=f40b3fc">
-<link rel="stylesheet" href="./sssender/ui/style.css?v=f40b3fc">
+<link rel="stylesheet" href="./sssender/ui/fonts.css?v=de2537d">
+<link rel="stylesheet" href="./sssender/ui/style.css?v=de2537d">
 <style>
   .index-status { border: 1px solid #ddd; background: #fff; padding: 1rem; margin-bottom: 1rem; transition: all 0.2s; text-align: center; }
   .index-status input { display: none; }
@@ -34,13 +34,13 @@
 <div class="section-head unnumbered">Usage</div>
 <div class="usage">
   <ol id="usage-link" hidden>
-    <li>Press 'Download index' or wait for the cached <a class="index-link">panhuman-1 index</a> to load.</li>
+    <li>Press 'Load index' or wait for the cached <a class="index-link">panhuman-1 index</a> to load.</li>
     <li>Drag &amp; drop fasta/fastq files you wish to upload or a directory containing them. Illumina R1/R2 files are paired automatically.</li>
     <li>Choose an upload name and press 'Filter &amp; upload' or 'Filter only'.</li>
   </ol>
   <ol id="usage-creds">
     <li>Enter S3-compatible object storage credentials.</li>
-    <li>Press 'Download index', else drag & drop a local copy of <a class="index-link">panhuman-1</a>.</li>
+    <li>Press 'Load index', else drag & drop a local copy of <a class="index-link">panhuman-1</a>.</li>
     <li>Drag &amp; drop fasta/fastq files you wish to upload, or a directory containing them. Illumina R1/R2 files are paired automatically.</li>
     <li>Choose an upload name and then press 'Filter &amp; upload' or 'Filter only'.</li>
   </ol>
@@ -78,7 +78,7 @@
 <div class="index-status" id="index-status">
   <input type="file" id="index-input" accept=".idx,.pidx">
   <div class="index-actions">
-    <button id="index-download" type="button" hidden>Download index panhuman-1 (1.7GB)</button>
+    <button id="index-download" type="button" hidden>Load index panhuman-1 (1.7GB)</button>
     <button id="index-retry" type="button" hidden>Retry download</button>
   </div>
   <div class="filename" id="index-name">Index</div>
@@ -135,6 +135,6 @@
 
 <p class="info footer-links"><a href="#" id="purge-index">clear index cache</a><span id="mint-entry"> · <a href="./mint.html">mint magic link</a></span></p>
 
-<script type="module" src="./app.js?v=f40b3fc"></script>
+<script type="module" src="./app.js?v=de2537d"></script>
 </body>
 </html>
